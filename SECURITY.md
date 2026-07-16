@@ -4,8 +4,8 @@
 
 Please report suspected vulnerabilities privately via GitHub's
 [private vulnerability reporting](https://docs.github.com/en/code-security/security-advisories/guidance-on-reporting-and-writing-information-about-vulnerabilities/privately-reporting-a-security-vulnerability)
-on this repository ("Security" tab → "Report a vulnerability"). Please do
-not open public issues for security reports.
+on this repository (the "Security" tab, then "Report a vulnerability").
+Please do not open public issues for security reports.
 
 We aim to acknowledge reports within five business days.
 
@@ -24,5 +24,5 @@ confidentiality. By design:
 - Bugs that cause the decoder to deliver bytes that were never verified, or
   to diverge from RFC 6330 in a way an attacker can exploit, are in scope.
 
-Reports about applications that skip object verification are out of scope —
-that contract is documented and deliberate.
+Reports about applications that skip object verification are out of
+scope; that contract is documented and deliberate.

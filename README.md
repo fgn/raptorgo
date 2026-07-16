@@ -17,16 +17,15 @@ developed at Digital Fountain and Qualcomm and standardized by the IETF as
 M. Luby, A. Shokrollahi, M. Watson, T. Stockhammer, and L. Minder. This
 repository is an independent implementation of that specification and
 claims no rights in the RaptorQ code, the RaptorQ name, or the underlying
-technology. Credit for the code belongs to its inventors; defects in this
-implementation belong to this project.
+technology. Any defects in this implementation are this project's own.
 
-The project is a research exercise in applying formal-methods and
-differential-verification techniques to a nontrivial protocol
-implementation. **It should not be read as "formally verified."** The
-TLA+ artifacts model-check bounded abstractions of selected subsystems
-and replay production-generated traces against those models; they check
-finite safety properties of models and recorded traces, not the compiled
-Go code, and establish no liveness of the real implementation. The exact
+The project is a research effort in applying formal-methods and
+differential-verification techniques to a protocol implementation. It
+should not be read as "formally verified." The TLA+ artifacts
+model-check bounded abstractions of selected subsystems and replay
+production-generated traces against those models; they check finite
+safety properties of models and recorded traces, not the compiled Go
+code, and establish no liveness of the real implementation. The exact
 claim-to-evidence map is in [`docs/invariants.md`](docs/invariants.md),
 the formal scope and its limits in [`formal/README.md`](formal/README.md),
 and the bounded recovery statistics in
@@ -110,7 +109,7 @@ the checks are not vacuous; differential vectors establish byte-identical
 behavior on the domains actually compared; exhaustive tests establish
 exactly the finite domains they enumerate (GF(256) algebra, parameter
 tables, ESI/ISI maps); and the Section 5.8 recovery profile is a
-preregistered, bounded statistical measurement — explicitly not a proof
+preregistered, bounded statistical measurement, explicitly not a proof
 over every RFC row and ESI. None of this amounts to a machine-checked
 proof of functional correctness of the Go implementation, and no such
 claim is made.
@@ -140,9 +139,10 @@ and [SECURITY.md](SECURITY.md) for the threat model and reporting channel.
 Mutation scope and baseline policy are in
 [`docs/mutation-testing.md`](docs/mutation-testing.md).
 
-End-to-end dogfooding — a file-transfer CLI and lossy-network test suite
-that consume only this module's public API — lives in the companion
-repository [`raptorgo-e2e`](https://github.com/fgn/raptorgo-e2e).
+End-to-end validation is maintained in the companion repository
+[`raptorgo-e2e`](https://github.com/fgn/raptorgo-e2e), which builds a
+file-transfer tool and a lossy-network test suite exclusively on this
+module's public API.
 
 ## License
 
@@ -155,5 +155,5 @@ property rights disclosures have been filed with the IETF (see the
 [IETF IPR disclosures for RFC 6330](https://datatracker.ietf.org/ipr/search/?rfc=6330&submit=rfc)).
 The Apache-2.0 license grants patent rights only from this project's
 contributors; it cannot and does not grant rights to any third-party
-patents. Evaluate your own use accordingly — this notice is information,
+patents. Evaluate your own use accordingly; this notice is information,
 not legal advice.

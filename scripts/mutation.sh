@@ -62,10 +62,8 @@ changed)
 		--fail-on-escaped \
 		--ignore-msi-with-no-mutations \
 		--logger-agentic-json \
-		--logger-summary-json
-	if [ -n "${MUTATION_DIFF_BASE:-}" ]; then
-		set -- "$@" --git-diff-base="$MUTATION_DIFF_BASE"
-	fi
+		--logger-summary-json \
+		--git-diff-base="${MUTATION_DIFF_BASE:-HEAD}"
 	# shellcheck disable=SC2046
 	exec "$tool" "$@" $(runtime_targets | sort)
 	;;

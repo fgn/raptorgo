@@ -2,6 +2,7 @@
 /.foo/
 /bin/
 /coverage.out
+/report.json
 /go-mutesting-agentic.json
 /go-mutesting-gitlab.json
 /go-mutesting-report.html

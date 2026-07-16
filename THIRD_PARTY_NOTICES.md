@@ -36,12 +36,12 @@ compiled into, linked against, or otherwise part of the Go module.
 The following are fetched by `Taskfile.yml` targets onto the developer's
 machine and are neither vendored in this repository nor distributed with it:
 
-- **libRaptorQ** (<https://github.com/LucaFulchir/libRaptorQ>, LGPL-3.0) —
+- **libRaptorQ** (<https://github.com/LucaFulchir/libRaptorQ>, LGPL-3.0):
   compiled at a pinned commit as an independent C++ cross-decoding oracle by
   `task oracle:cpp`. Only the raptorgo-authored adapter
   `interop/cpp-oracle/main.cpp` is distributed here.
-- **tla2tools.jar** (<https://github.com/tlaplus/tlaplus>, MIT) — the TLA+
+- **tla2tools.jar** (<https://github.com/tlaplus/tlaplus>, MIT): the TLA+
   model checker used by `task verify:tla`.
 - **gofumpt** (<https://github.com/mvdan/gofumpt>, BSD-3-Clause) and
-  **govulncheck** (<https://golang.org/x/vuln>, BSD-3-Clause) — lint
+  **govulncheck** (<https://golang.org/x/vuln>, BSD-3-Clause): lint
   tooling installed into the gitignored `bin/` directory.

@@ -29,10 +29,11 @@ three reviewed equivalent mutants described below. The raw MSI must remain at
 least 98 percent, and any new survivor fails the task.
 
 `task mutation:changed` applies the broad operator set only to lines changed
-from Git's detected base (or `MUTATION_DIFF_BASE`). It uses coverage and
-per-test selection for speed and fails on every new survivor. This task is
-intended for pull requests after files have been committed; Git cannot select
-untracked lines.
+from `HEAD`, or from the ref named by `MUTATION_DIFF_BASE`. It uses coverage
+and per-test selection for speed and fails on every new survivor. Set the base
+to the pull request's merge base when the branch contains multiple commits.
+Git cannot select untracked lines, so add new source files to the index before
+running this tier.
 
 `task mutation:audit` is a scheduled/manual discovery campaign over all
 hand-written runtime source. It excludes tests, command-line development
