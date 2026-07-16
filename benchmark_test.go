@@ -1,0 +1,150 @@
+package raptorgo
+
+import (
+	"fmt"
+	"io"
+	"testing"
+)
+
+func BenchmarkObjectEncoderPacket(b *testing.B) {
+	for _, test := range []struct {
+		k, symbolSize uint32
+	}{
+		{10, 64},
+		{49, 31},
+		{1_025, 7},
+	} {
+		name := fmt.Sprintf("K=%d/T=%d", test.k, test.symbolSize)
+		oti := benchmarkOTI(test.k, test.symbolSize)
+		object := benchmarkObject(oti.TransferLength)
+		encoder, err := NewObjectEncoder(object, oti, DefaultLimits())
+		if err != nil {
+			b.Fatal(err)
+		}
+		if _, err := encoder.Packet(0, test.k, 1, false); err != nil {
+			b.Fatal(err)
+		}
+		b.Run("systematic/"+name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(test.symbolSize))
+			for b.Loop() {
+				if _, err := encoder.Packet(0, test.k/2, 1, false); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+		b.Run("repair-cached/"+name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(test.symbolSize))
+			for b.Loop() {
+				if _, err := encoder.Packet(0, test.k+17, 1, false); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+		b.Run("construct-and-repair/"+name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(oti.TransferLength))
+			for b.Loop() {
+				fresh, err := NewObjectEncoder(object, oti, DefaultLimits())
+				if err != nil {
+					b.Fatal(err)
+				}
+				if _, err := fresh.Packet(0, test.k, 1, false); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkObjectDecoder(b *testing.B) {
+	for _, test := range []struct {
+		k, symbolSize, loss, overhead uint32
+	}{
+		{10, 64, 0, 0},
+		{49, 31, 5, 4},
+		{1_025, 7, 7, 8},
+	} {
+		name := fmt.Sprintf("K=%d/T=%d/loss=%d/overhead=%d", test.k, test.symbolSize, test.loss, test.overhead)
+		oti := benchmarkOTI(test.k, test.symbolSize)
+		object := benchmarkObject(oti.TransferLength)
+		encoder, err := NewObjectEncoder(object, oti, DefaultLimits())
+		if err != nil {
+			b.Fatal(err)
+		}
+		packets := make([][]byte, 0, test.k+test.overhead+1)
+		for esi := test.k; esi > test.loss; esi-- {
+			packet, packetErr := encoder.Packet(0, esi-1, 1, false)
+			if packetErr != nil {
+				b.Fatal(packetErr)
+			}
+			packets = append(packets, packet)
+		}
+		for offset := test.loss + test.overhead; offset > 0; offset-- {
+			packet, packetErr := encoder.Packet(0, test.k+offset-1, 1, false)
+			if packetErr != nil {
+				b.Fatal(packetErr)
+			}
+			packets = append(packets, packet)
+		}
+		if len(packets) > 0 {
+			packets = append(packets, packets[0]) // Explicit duplicate after reverse order.
+		}
+		decode := func() error {
+			decoder, decoderErr := NewObjectDecoder(
+				oti, DefaultLimits(), "benchmark",
+				func(request VerificationRequest) error {
+					_, copyErr := io.Copy(io.Discard, request.Object)
+					return copyErr
+				},
+				func(delivered VerifiedObject) error {
+					if uint64(len(delivered.Bytes)) != oti.TransferLength {
+						return fmt.Errorf("delivered %d bytes", len(delivered.Bytes))
+					}
+					return nil
+				},
+			)
+			if decoderErr != nil {
+				return decoderErr
+			}
+			for _, packet := range packets {
+				state, addErr := decoder.AddPacket(packet)
+				if addErr != nil {
+					return addErr
+				}
+				if state == ObjectDelivered {
+					return nil
+				}
+			}
+			return fmt.Errorf("decoder ended in %s", decoder.State())
+		}
+		if err := decode(); err != nil {
+			b.Fatalf("benchmark corpus is not decodable: %v", err)
+		}
+		b.Run(name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(oti.TransferLength))
+			for b.Loop() {
+				if err := decode(); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func benchmarkOTI(k, symbolSize uint32) OTI {
+	return OTI{
+		TransferLength: uint64(k) * uint64(symbolSize), SymbolSize: uint16(symbolSize),
+		SourceBlocks: 1, SubBlocks: 1, SymbolAlignment: 1,
+	}
+}
+
+func benchmarkObject(length uint64) []byte {
+	object := make([]byte, int(length))
+	for index := range object {
+		object[index] = byte(uint64(index)*131 + 19)
+	}
+	return object
+}

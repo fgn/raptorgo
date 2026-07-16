@@ -1,0 +1,8 @@
+[package]
+name = "raptorq-rust-oracle"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+raptorq = { path = "../vendor/raptorq-2.0.1" }

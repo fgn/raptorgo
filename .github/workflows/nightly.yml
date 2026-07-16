@@ -1,0 +1,47 @@
+name: nightly
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  formal:
+    name: TLA+ model checking
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ github.token }}
+      - run: task verify
+
+  release-gates:
+    name: RFC-maximum release gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: arduino/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ github.token }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: task test:release

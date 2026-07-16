@@ -1,0 +1,806 @@
+# https://taskfile.dev
+version: "3"
+
+vars:
+  GOFUMPT_VERSION: v0.10.0
+  GO_MUTESTING_VERSION: v2.7.9
+  GOVULNCHECK_VERSION: v1.6.0
+  TLA2TOOLS_VERSION: v1.8.0
+  TLA2TOOLS_SHA256: 58d44845a37a8d776deaf8cf3a623213b59d311bc0ec287bcdfbe148dd11bb3d
+  TLA2TOOLS_JAR: '{{.ROOT_DIR}}/bin/tla2tools-v1.8.0.jar'
+  LIBRAPTORQ_COMMIT: a394b22af6e8fc742ce88eacf9af5343ecded9d7
+  LIBRAPTORQ_ARCHIVE_SHA256: 2cc35b7b68fb3d7624d1be2660099be75373c018e6d3cb84203a231b37485892
+
+env:
+  CGO_ENABLED: "0"
+
+tasks:
+  default:
+    cmds:
+      - task: ci
+
+  install:gofumpt:
+    status:
+      - test -x ./bin/gofumpt
+      - ./bin/gofumpt -version | grep -F '{{.GOFUMPT_VERSION}}'
+    preconditions:
+      - sh: which go
+        msg: please install Go
+    cmds:
+      - mkdir -p ./bin
+      - GOBIN='{{.ROOT_DIR}}/bin' go install mvdan.cc/gofumpt@{{.GOFUMPT_VERSION}}
+
+  install:govulncheck:
+    status:
+      - test -x ./bin/govulncheck
+      - ./bin/govulncheck -version | grep -F '{{.GOVULNCHECK_VERSION}}'
+      - 'go version -m ./bin/govulncheck | head -1 | grep -F ": $(go env GOVERSION)"'
+    preconditions:
+      - sh: which go
+        msg: please install Go
+    cmds:
+      - mkdir -p ./bin
+      - GOBIN='{{.ROOT_DIR}}/bin' go install golang.org/x/vuln/cmd/govulncheck@{{.GOVULNCHECK_VERSION}}
+
+  install:go-mutesting:
+    status:
+      - test -x ./bin/go-mutesting
+      - >-
+        go version -m ./bin/go-mutesting |
+        grep -E '^[[:space:]]*mod[[:space:]]+github.com/jonbaldie/go-mutesting/v2[[:space:]]+{{.GO_MUTESTING_VERSION}}([[:space:]]|$)'
+      - 'go version -m ./bin/go-mutesting | head -1 | grep -F ": $(go env GOVERSION)"'
+    preconditions:
+      - sh: which go
+        msg: please install Go
+    cmds:
+      - mkdir -p ./bin
+      - >-
+        GOBIN='{{.ROOT_DIR}}/bin'
+        go install github.com/jonbaldie/go-mutesting/v2/cmd/go-mutesting@{{.GO_MUTESTING_VERSION}}
+
+  install:tla2tools:
+    status:
+      - test -f '{{.TLA2TOOLS_JAR}}'
+      - echo '{{.TLA2TOOLS_SHA256}}  {{.TLA2TOOLS_JAR}}' | sha256sum -c -
+    preconditions:
+      - sh: which curl
+        msg: please install curl
+      - sh: which sha256sum
+        msg: please install sha256sum
+    cmds:
+      - mkdir -p ./bin
+      - curl -fsSL 'https://github.com/tlaplus/tlaplus/releases/download/{{.TLA2TOOLS_VERSION}}/tla2tools.jar' -o '{{.TLA2TOOLS_JAR}}.download'
+      - echo '{{.TLA2TOOLS_SHA256}}  {{.TLA2TOOLS_JAR}}.download' | sha256sum -c -
+      - mv '{{.TLA2TOOLS_JAR}}.download' '{{.TLA2TOOLS_JAR}}'
+
+  format:
+    desc: format Go sources and module metadata
+    cmds:
+      - task: install:gofumpt
+      - ./bin/gofumpt -w .
+      - go mod edit -fmt
+      - go mod tidy
+      - cargo fmt --manifest-path interop/rust-oracle/Cargo.toml
+
+  format:check:
+    desc: fail when formatting or module metadata is stale
+    cmds:
+      - task: install:gofumpt
+      - test -z "$(./bin/gofumpt -l .)"
+      - go mod tidy -diff
+      - cargo fmt --manifest-path interop/rust-oracle/Cargo.toml --check
+
+  lint:vet:
+    desc: run the Go static analyzer
+    cmds:
+      - go vet ./...
+
+  lint:purego:
+    desc: reject CGo and external dependencies in every Go package
+    cmds:
+      - go run ./internal/tooling/purego
+
+  lint:govulncheck:
+    desc: scan reachable Go code for known vulnerabilities
+    cmds:
+      - task: install:govulncheck
+      - ./bin/govulncheck ./...
+
+  lint:
+    desc: run deterministic lint gates
+    cmds:
+      - task: format:check
+      - task: lint:vet
+      - task: lint:purego
+
+  test:
+    desc: run all Go tests once with coverage
+    cmds:
+      - go test {{.CLI_ARGS | default "-count=1 -cover ./..."}}
+
+  test:race:
+    desc: run the race detector (its development-time runtime requires CGo)
+    env:
+      CGO_ENABLED: "1"
+    cmds:
+      - go test -count=1 -race ./...
+
+  test:386:
+    desc: run every Go test under a 32-bit address-space model
+    env:
+      GOARCH: "386"
+    cmds:
+      - go test -count=1 ./...
+
+  test:checkptr:
+    desc: run tests with strict unsafe-pointer instrumentation
+    cmds:
+      - go test -count=1 -gcflags=all=-d=checkptr=2 ./...
+
+  fuzz:smoke:
+    desc: exercise parser, object, decoder, algebra, and sparse fuzz targets
+    cmds:
+      - go test -run '^$' -fuzz '^FuzzParseEncodingPacket$' -fuzztime=1s .
+      - go test -run '^$' -fuzz '^FuzzObjectCodecSourcePacketRoundTrip$' -fuzztime=1s .
+      - go test -run '^$' -fuzz '^FuzzSourceBlockDecoderSystematicOrder$' -fuzztime=1s ./internal/codec
+      - go test -run '^$' -fuzz '^FuzzSolveArbitraryRectangularAgainstPolynomialOracle$' -fuzztime=1s ./internal/gf256
+      - go test -run '^$' -fuzz '^FuzzSparseOctetAgainstDense$' -fuzztime=1s ./internal/matrix
+
+  mutation:list:
+    desc: preview mutation counts over hand-written runtime source
+    deps: [install:go-mutesting]
+    cmds:
+      - sh scripts/mutation.sh list
+
+  mutation:gate:
+    desc: reject new survivors in the curated boundary and algebra kernels
+    deps: [install:go-mutesting]
+    cmds:
+      - sh scripts/mutation.sh gate
+
+  mutation:audit:
+    desc: audit all hand-written runtime source and emit agent-ready reports
+    deps: [install:go-mutesting]
+    cmds:
+      - sh scripts/mutation.sh audit
+
+  mutation:changed:
+    desc: reject survivors on lines changed from the configured Git base
+    deps: [install:go-mutesting]
+    cmds:
+      - sh scripts/mutation.sh changed
+
+  bench:
+    desc: benchmark encoder/decoder K, T, loss, and overhead strata
+    cmds:
+      - go test -run '^$' -bench '^BenchmarkObject' -benchmem .
+
+  bench:smoke:
+    desc: execute every benchmark corpus once as a validity gate
+    cmds:
+      - go test -run '^$' -bench '^BenchmarkObject' -benchtime=1x .
+
+  test:release:
+    desc: run RFC-maximum and other resource-intensive codec gates
+    deps: [oracle:raw:release, verify:recovery:release]
+    env:
+      RAPTORGO_RELEASE_TESTS: "1"
+    cmds:
+      - go test -count=1 -v ./internal/codec -run 'Test(HybridIntermediateRFCMaximum|SourceBlockDecoder(RFCMaximumLossRepair|BoundaryPlusOneLossRepair))Release'
+
+  verify:recovery:release:
+    desc: regenerate the preregistered RFC 6330 Section 5.8 profile
+    cmds:
+      - |-
+        set -eu
+        temporary=$(mktemp)
+        trap 'rm -f "$temporary"' EXIT
+        go run ./internal/codec/cmd/recoveryprofile >"$temporary"
+        cmp "$temporary" interop/corpus/recovery-profile.txt
+
+  verify:rfc:
+    desc: verify the pinned RFC source bytes
+    cmds:
+      - sha256sum -c spec/SHA256SUMS
+
+  verify:generated:
+    desc: reject stale Go-generated TLA trace data and RFC tables
+    cmds:
+      - |-
+        set -eu
+        temporary=$(mktemp -d)
+        trap 'rm -rf "$temporary"' EXIT
+        go run ./internal/verifytrace/cmd/gentrace -scenario deliver -output "$temporary/deliver.tla"
+        go run ./internal/verifytrace/cmd/gentrace -scenario abort -output "$temporary/abort.tla"
+        go run ./internal/verifytrace/cmd/gentrace -scenario verify-fail -output "$temporary/verify-fail.tla"
+        go run ./internal/verifytrace/cmd/gentrace -scenario rejected-calls -output "$temporary/rejected-calls.tla"
+        go run ./internal/rfc6330/cmd/extracttables \
+          -rfc rfc6330.txt -output "$temporary/tables_gen.go"
+        go run ./internal/rfc6330/cmd/genmappingtrace \
+          -scenario valid -output "$temporary/mapping-trace.tla"
+        go run ./internal/rfc6330/cmd/genmappingtrace \
+          -scenario invalid -output "$temporary/mapping-trace-invalid.tla"
+        go run ./internal/rfc6330/cmd/genmappingtrace \
+          -scenario missing -output "$temporary/mapping-trace-missing.tla"
+        go run ./internal/matrix/cmd/genscheduletrace \
+          -scenario valid -output "$temporary/sparse-schedule-trace.tla"
+        go run ./internal/matrix/cmd/genscheduletrace \
+          -scenario missing -output "$temporary/sparse-schedule-trace-missing.tla"
+        go run ./internal/matrix/cmd/genscheduletrace \
+          -scenario forged-swap -output "$temporary/sparse-schedule-trace-forged-swap.tla"
+        go run ./internal/matrix/cmd/genscheduletrace \
+          -scenario forged-budget -output "$temporary/sparse-schedule-trace-forged-budget.tla"
+        go run ./internal/codec/cmd/geninactivationtrace \
+          -scenario valid -output "$temporary/inactivation-trace.tla"
+        go run ./internal/codec/cmd/geninactivationtrace \
+          -scenario missing -output "$temporary/inactivation-trace-missing.tla"
+        go run ./internal/codec/cmd/geninactivationtrace \
+          -scenario forged-discard -output "$temporary/inactivation-trace-forged-discard.tla"
+        go run ./internal/codec/cmd/geninactivationtrace \
+          -scenario forged-budget -output "$temporary/inactivation-trace-forged-budget.tla"
+        go run ./internal/codec/cmd/geninactivationtrace \
+          -scenario forged-init-budget -output "$temporary/inactivation-trace-forged-init-budget.tla"
+        go run ./internal/codec/cmd/geninactivationtrace \
+          -scenario forged-initial-u -output "$temporary/inactivation-trace-forged-initial-u.tla"
+        go run ./internal/codec/cmd/geninactivationtrace \
+          -scenario forged-phase-label -output "$temporary/inactivation-trace-forged-phase-label.tla"
+        go run ./internal/codec/cmd/geninactivationtrace \
+          -scenario forged-u -output "$temporary/inactivation-trace-forged-u.tla"
+        go run ./internal/codec/cmd/genhybridtrace \
+          -output "$temporary/hybrid-trace-data.tla"
+        go run ./internal/cmd/genobjecttrace \
+          -scenario deliver -output "$temporary/object-decoder-trace-data.tla"
+        go run ./internal/cmd/genobjecttrace \
+          -scenario verify-fail -output "$temporary/object-decoder-verify-failure-trace-data.tla"
+        go run ./internal/cmd/genobjecttrace \
+          -scenario delivery-fail -output "$temporary/object-decoder-delivery-failure-trace-data.tla"
+        go run ./internal/cmd/genobjecttrace \
+          -scenario decode-fail -output "$temporary/object-decoder-decode-failure-trace-data.tla"
+        cmp "$temporary/deliver.tla" formal/DecoderTraceData.tla
+        cmp "$temporary/abort.tla" formal/DecoderAbortTraceData.tla
+        cmp "$temporary/verify-fail.tla" formal/DecoderVerifyFailureTraceData.tla
+        cmp "$temporary/rejected-calls.tla" formal/DecoderRejectedCallsTraceData.tla
+        cmp "$temporary/tables_gen.go" internal/rfc6330/tables_gen.go
+        cmp "$temporary/mapping-trace.tla" formal/MappingTraceData.tla
+        cmp "$temporary/mapping-trace-invalid.tla" formal/MappingTraceInvalidData.tla
+        cmp "$temporary/mapping-trace-missing.tla" formal/MappingTraceMissingData.tla
+        cmp "$temporary/sparse-schedule-trace.tla" formal/SparseScheduleTraceData.tla
+        cmp "$temporary/sparse-schedule-trace-missing.tla" formal/SparseScheduleTraceMissingData.tla
+        cmp "$temporary/sparse-schedule-trace-forged-swap.tla" formal/SparseScheduleTraceForgedSwapData.tla
+        cmp "$temporary/sparse-schedule-trace-forged-budget.tla" formal/SparseScheduleTraceForgedBudgetData.tla
+        cmp "$temporary/inactivation-trace.tla" formal/InactivationTraceData.tla
+        cmp "$temporary/inactivation-trace-missing.tla" formal/InactivationTraceMissingData.tla
+        cmp "$temporary/inactivation-trace-forged-discard.tla" formal/InactivationTraceForgedDiscardData.tla
+        cmp "$temporary/inactivation-trace-forged-budget.tla" formal/InactivationTraceForgedBudgetData.tla
+        cmp "$temporary/inactivation-trace-forged-init-budget.tla" formal/InactivationTraceForgedInitBudgetData.tla
+        cmp "$temporary/inactivation-trace-forged-initial-u.tla" formal/InactivationTraceForgedInitialUData.tla
+        cmp "$temporary/inactivation-trace-forged-phase-label.tla" formal/InactivationTraceForgedPhaseLabelData.tla
+        cmp "$temporary/inactivation-trace-forged-u.tla" formal/InactivationTraceForgedUData.tla
+        cmp "$temporary/hybrid-trace-data.tla" formal/HybridTraceData.tla
+        cmp "$temporary/object-decoder-trace-data.tla" formal/ObjectDecoderTraceData.tla
+        cmp "$temporary/object-decoder-verify-failure-trace-data.tla" formal/ObjectDecoderVerifyFailureTraceData.tla
+        cmp "$temporary/object-decoder-delivery-failure-trace-data.tla" formal/ObjectDecoderDeliveryFailureTraceData.tla
+        cmp "$temporary/object-decoder-decode-failure-trace-data.tla" formal/ObjectDecoderDecodeFailureTraceData.tla
+
+  verify:tla:
+    desc: model-check static models and valid implementation traces
+    deps: [install:tla2tools]
+    dir: formal
+    cmds:
+      - ../scripts/tlc.sh -noGenerateSpecTE Partition.tla -config Partition.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE SystematicMapping.tla -config SystematicMapping.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE PlannerProgress.tla -config PlannerProgress.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE DecoderLifecycle.tla -config DecoderLifecycleMin.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE DecoderLifecycle.tla -config DecoderLifecycle.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE DecoderLifecycle.tla -config DecoderLifecycleFull.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE DecoderTrace.tla -config DecoderTrace.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE DecoderAbortTrace.tla -config DecoderAbortTrace.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE DecoderVerifyFailureTrace.tla -config DecoderVerifyFailureTrace.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE DecoderRejectedCallsTrace.tla -config DecoderRejectedCallsTrace.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE MappingTrace.tla -config MappingTrace.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE SparseScheduleTrace.tla -config SparseScheduleTrace.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE InactivationTrace.tla -config InactivationTrace.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE HybridTrace.tla -config HybridTrace.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE ObjectDecoderTrace.tla -config ObjectDecoderTrace.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE ObjectDecoderVerifyFailureTrace.tla -config ObjectDecoderTrace.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE ObjectDecoderDeliveryFailureTrace.tla -config ObjectDecoderTrace.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE ObjectDecoderDecodeFailureTrace.tla -config ObjectDecoderTrace.cfg
+
+  verify:tla:negative:
+    desc: prove invalid implementation traces fail the expected property
+    deps: [install:tla2tools]
+    dir: formal
+    cmds:
+      - |-
+        set -eu
+        temporary=$(mktemp -d)
+        trap 'rm -rf "$temporary"' EXIT
+        check_rejected() {
+          module=$1
+          config=$2
+          output="$temporary/$module.out"
+          if ../scripts/tlc.sh -noGenerateSpecTE "$module.tla" -config "$config.cfg" >"$output" 2>&1; then
+            echo "$module unexpectedly passed TLC" >&2
+            return 1
+          fi
+          if ! grep -F 'Error: Temporal property TraceComplete was violated.' "$output" >/dev/null; then
+            echo "$module failed for an unexpected reason" >&2
+            cat "$output" >&2
+            return 1
+          fi
+        }
+        check_rejected DecoderTraceInvalid DecoderTraceInvalid
+        check_rejected DecoderTraceTerminalReject DecoderTraceTerminalReject
+        check_rejected DecoderTraceEarlyDeliver DecoderTraceEarlyDeliver
+        check_rejected MappingTraceInvalid MappingTraceInvalid
+        check_rejected SparseScheduleTraceForgedSwap SparseScheduleTraceForgedSwap
+        check_rejected SparseScheduleTraceForgedBudget SparseScheduleTraceForgedBudget
+        check_rejected InactivationTraceForgedDiscard InactivationTraceForgedDiscard
+        check_rejected InactivationTraceForgedBudget InactivationTraceForgedBudget
+        check_rejected InactivationTraceForgedInitialU InactivationTraceForgedInitialU
+        check_rejected InactivationTraceForgedPhaseLabel InactivationTraceForgedPhaseLabel
+        check_rejected InactivationTraceForgedU InactivationTraceForgedU
+        check_rejected HybridTraceForgedFrozen HybridTrace
+        check_rejected HybridTraceForgedElimination HybridTrace
+        check_rejected HybridTraceForgedPermutation HybridTrace
+        check_rejected HybridTracePrematureDense HybridTrace
+        check_rejected HybridTraceWrongSubstitution HybridTrace
+        check_rejected HybridTraceForgedResidual HybridTrace
+        check_rejected HybridTraceForgedBinary HybridTrace
+        check_rejected HybridTraceForgedSubstitution HybridTrace
+        check_rejected HybridTraceForgedSolution HybridTrace
+        check_rejected HybridTraceForgedResult HybridTrace
+        check_rejected ObjectDecoderTraceEarlyDelivery ObjectDecoderTrace
+        check_rejected ObjectDecoderTraceEarlyVerify ObjectDecoderTrace
+        check_rejected ObjectDecoderTraceMissingVerify ObjectDecoderTrace
+        check_rejected ObjectDecoderTraceForgedBinding ObjectDecoderTrace
+        check_rejected ObjectDecoderTraceDecodeFailureRevived ObjectDecoderTrace
+        planner_progress_output="$temporary/PlannerProgressMutation.out"
+        if ../scripts/tlc.sh -noGenerateSpecTE PlannerProgress.tla \
+          -config PlannerProgressMutation.cfg >"$planner_progress_output" 2>&1; then
+          echo 'forged planner row removal unexpectedly passed TLC' >&2
+          exit 1
+        fi
+        if ! grep -F 'Error: Invariant NoPlannerStall is violated.' \
+          "$planner_progress_output" >/dev/null; then
+          echo 'forged planner removal failed for an unexpected reason' >&2
+          cat "$planner_progress_output" >&2
+          exit 1
+        fi
+        init_budget_output="$temporary/InactivationTraceForgedInitBudget.out"
+        if ../scripts/tlc.sh -noGenerateSpecTE InactivationTraceForgedInitBudget.tla \
+          -config InactivationTraceForgedInitBudget.cfg >"$init_budget_output" 2>&1; then
+          echo 'inactivation trace with a forged init budget unexpectedly passed TLC' >&2
+          exit 1
+        fi
+        if ! grep -F 'Error: The invariant of TraceBudgetFields is equal to FALSE' \
+          "$init_budget_output" >/dev/null; then
+          echo 'forged init budget failed for an unexpected reason' >&2
+          cat "$init_budget_output" >&2
+          exit 1
+        fi
+        missing_output="$temporary/MappingTraceMissing.out"
+        if ../scripts/tlc.sh -noGenerateSpecTE MappingTraceMissing.tla \
+          -config MappingTraceMissing.cfg >"$missing_output" 2>&1; then
+          echo 'mapping trace with a deleted boundary unexpectedly passed TLC' >&2
+          exit 1
+        fi
+        if ! grep -F 'Error: Invariant TraceCoverage is violated' \
+          "$missing_output" >/dev/null; then
+          echo 'mapping trace deletion failed for an unexpected reason' >&2
+          cat "$missing_output" >&2
+          exit 1
+        fi
+        schedule_missing_output="$temporary/SparseScheduleTraceMissing.out"
+        if ../scripts/tlc.sh -noGenerateSpecTE SparseScheduleTraceMissing.tla \
+          -config SparseScheduleTraceMissing.cfg >"$schedule_missing_output" 2>&1; then
+          echo 'sparse schedule trace with a deleted operation unexpectedly passed TLC' >&2
+          exit 1
+        fi
+        if ! grep -F 'Error: Invariant TraceCoverage is violated' \
+          "$schedule_missing_output" >/dev/null; then
+          echo 'sparse schedule trace deletion failed for an unexpected reason' >&2
+          cat "$schedule_missing_output" >&2
+          exit 1
+        fi
+        inactivation_missing_output="$temporary/InactivationTraceMissing.out"
+        if ../scripts/tlc.sh -noGenerateSpecTE InactivationTraceMissing.tla \
+          -config InactivationTraceMissing.cfg >"$inactivation_missing_output" 2>&1; then
+          echo 'inactivation trace with a deleted phase unexpectedly passed TLC' >&2
+          exit 1
+        fi
+        if ! grep -F 'Error: Invariant TraceCoverage is violated' \
+          "$inactivation_missing_output" >/dev/null; then
+          echo 'inactivation phase deletion failed for an unexpected reason' >&2
+          cat "$inactivation_missing_output" >&2
+          exit 1
+        fi
+        mutation_output="$temporary/DecoderLifecycleMutation.out"
+        if ../scripts/tlc.sh -noGenerateSpecTE DecoderLifecycle.tla \
+          -config DecoderLifecycleMutation.cfg >"$mutation_output" 2>&1; then
+          echo 'lifecycle fault injection unexpectedly passed TLC' >&2
+          exit 1
+        fi
+        if ! grep -F 'Error: Action property EveryNextTransitionAllowed is violated.' \
+          "$mutation_output" >/dev/null; then
+          echo 'lifecycle fault injection failed for an unexpected reason' >&2
+          cat "$mutation_output" >&2
+          exit 1
+        fi
+        hybrid_missing_output="$temporary/HybridTraceMissingEvent.out"
+        if ../scripts/tlc.sh -noGenerateSpecTE HybridTraceMissingEvent.tla \
+          -config HybridTrace.cfg >"$hybrid_missing_output" 2>&1; then
+          echo 'hybrid trace with a deleted replay event unexpectedly passed TLC' >&2
+          exit 1
+        fi
+        if ! grep -F 'Error: Invariant TraceCoverage is violated' \
+          "$hybrid_missing_output" >/dev/null; then
+          echo 'hybrid replay deletion failed for an unexpected reason' >&2
+          cat "$hybrid_missing_output" >&2
+          exit 1
+        fi
+        hybrid_plan_budget_output="$temporary/HybridTraceForgedPlanBudget.out"
+        if ../scripts/tlc.sh -noGenerateSpecTE HybridTraceForgedPlanBudget.tla \
+          -config HybridTrace.cfg >"$hybrid_plan_budget_output" 2>&1; then
+          echo 'hybrid planner one-byte-short acceptance unexpectedly passed TLC' >&2
+          exit 1
+        fi
+        if ! grep -F 'Error: The invariant of PlanTraceBudgetFields is equal to FALSE' \
+          "$hybrid_plan_budget_output" >/dev/null; then
+          echo 'hybrid planner budget control failed for an unexpected reason' >&2
+          cat "$hybrid_plan_budget_output" >&2
+          exit 1
+        fi
+        hybrid_execution_budget_output="$temporary/HybridTraceForgedExecutionBudget.out"
+        if ../scripts/tlc.sh -noGenerateSpecTE HybridTraceForgedExecutionBudget.tla \
+          -config HybridTrace.cfg >"$hybrid_execution_budget_output" 2>&1; then
+          echo 'hybrid executor one-byte-short acceptance unexpectedly passed TLC' >&2
+          exit 1
+        fi
+        if ! grep -F 'Error: The invariant of ExecutionTraceBudgetFields is equal to FALSE' \
+          "$hybrid_execution_budget_output" >/dev/null; then
+          echo 'hybrid executor budget control failed for an unexpected reason' >&2
+          cat "$hybrid_execution_budget_output" >&2
+          exit 1
+        fi
+        hybrid_rhs_output="$temporary/HybridTraceForgedRHS.out"
+        if ../scripts/tlc.sh -noGenerateSpecTE HybridTraceForgedRHS.tla \
+          -config HybridTrace.cfg >"$hybrid_rhs_output" 2>&1; then
+          echo 'hybrid trace with a forged canonical RHS map unexpectedly passed TLC' >&2
+          exit 1
+        fi
+        if ! grep -F 'Error: The invariant of RHSMapping is equal to FALSE' \
+          "$hybrid_rhs_output" >/dev/null; then
+          echo 'hybrid canonical RHS control failed for an unexpected reason' >&2
+          cat "$hybrid_rhs_output" >&2
+          exit 1
+        fi
+
+  verify:
+    desc: run RFC, generated-artifact, and formal verification gates
+    cmds:
+      - task: verify:rfc
+      - task: verify:generated
+      - task: verify:tla
+      - task: verify:tla:negative
+
+  oracle:build:
+    desc: format-check and build the pinned Rust parity oracle in release mode
+    deps: [verify:oracle-source]
+    cmds:
+      - cargo fmt --manifest-path interop/rust-oracle/Cargo.toml --check
+      - cargo build --release --locked --manifest-path interop/rust-oracle/Cargo.toml
+      - cargo test --release --locked --manifest-path interop/rust-oracle/Cargo.toml
+
+  verify:oracle-source:
+    desc: verify the pinned vendored Rust source and primitive-export shim
+    cmds:
+      - go run ./internal/tooling/verifyvendor interop/vendor/raptorq-2.0.1
+
+  oracle:primitives:
+    desc: compare reproducible Go/Rust parameter and primitive vectors
+    deps: [oracle:build]
+    cmds:
+      - |-
+        set -eu
+        temporary=$(mktemp -d)
+        trap 'rm -rf "$temporary"' EXIT
+        go run ./internal/rfc6330/cmd/primitivevectors >"$temporary/go.vectors"
+        cargo run --quiet --release --locked \
+          --manifest-path interop/rust-oracle/Cargo.toml -- primitive-vectors \
+          >"$temporary/rust.vectors"
+        cmp "$temporary/go.vectors" "$temporary/rust.vectors"
+
+  oracle:raw:
+    desc: compare raw systematic and repair payloads with pinned Rust raptorq
+    deps: [oracle:build]
+    cmds:
+      - |-
+        set -eu
+        temporary=$(mktemp -d)
+        trap 'rm -rf "$temporary"' EXIT
+        go run ./internal/codec/cmd/rawvectors >"$temporary/go.vectors"
+        cargo run --quiet --release --locked \
+          --manifest-path interop/rust-oracle/Cargo.toml -- raw-vectors \
+          >"$temporary/rust.vectors"
+        test "$(wc -l <"$temporary/go.vectors")" -eq 212
+        test "$(awk '{print $2 ":" $3 ":" $4}' "$temporary/go.vectors" | sort -u | wc -l)" -eq 212
+        grep -E '^s 13 255 13 [0-9a-f]{510}$' "$temporary/go.vectors" >/dev/null
+        grep -E '^s 13 255 16777215 [0-9a-f]{510}$' "$temporary/go.vectors" >/dev/null
+        cmp "$temporary/go.vectors" "$temporary/rust.vectors"
+        cp "$temporary/go.vectors" "$temporary/raw-go-rust.vectors"
+        (cd "$temporary" && sha256sum -c '{{.ROOT_DIR}}/interop/corpus/raw.sha256')
+
+  oracle:raw:release:
+    desc: compare full-domain raw payload sentinels with pinned Rust raptorq
+    deps: [oracle:build]
+    cmds:
+      - |-
+        set -eu
+        temporary=$(mktemp -d)
+        trap 'rm -rf "$temporary"' EXIT
+        go run ./internal/codec/cmd/rawvectors release >"$temporary/go.vectors"
+        cargo run --quiet --release --locked --offline \
+          --manifest-path interop/rust-oracle/Cargo.toml -- raw-vectors-release \
+          >"$temporary/rust.vectors"
+        test "$(wc -l <"$temporary/go.vectors")" -eq 66
+        cmp "$temporary/go.vectors" "$temporary/rust.vectors"
+        cp "$temporary/go.vectors" "$temporary/raw-go-rust-release.vectors"
+        (cd "$temporary" && sha256sum -c '{{.ROOT_DIR}}/interop/corpus/raw-release.sha256')
+
+  oracle:cross:
+    desc: cross-decode deterministic Go/Rust source, repair, and partition frames
+    deps: [oracle:build]
+    cmds:
+      - |-
+        set -eu
+        temporary=$(mktemp -d)
+        trap 'rm -rf "$temporary"' EXIT
+        head -c 4096 rfc6330.txt >"$temporary/single.input"
+        single_oti=000000100000008001000101
+        cargo run --quiet --release --locked --offline \
+          --manifest-path interop/rust-oracle/Cargo.toml -- \
+          encode-range "$temporary/single.input" "$single_oti" 0 0 32 \
+          "$temporary/rust-source.rqo1"
+        go run ./internal/cmd/rqframe encode-range \
+          "$temporary/single.input" "$single_oti" 0 0 32 \
+          "$temporary/single-block-source.rqo1"
+        cmp "$temporary/single-block-source.rqo1" "$temporary/rust-source.rqo1"
+        go run ./internal/cmd/rqframe decode \
+          "$temporary/rust-source.rqo1" "$temporary/go-source.decoded"
+        cargo run --quiet --release --locked --offline \
+          --manifest-path interop/rust-oracle/Cargo.toml -- decode \
+          "$temporary/single-block-source.rqo1" "$temporary/rust-source.decoded"
+        cmp "$temporary/single.input" "$temporary/go-source.decoded"
+        cmp "$temporary/single.input" "$temporary/rust-source.decoded"
+        cargo run --quiet --release --locked --offline \
+          --manifest-path interop/rust-oracle/Cargo.toml -- \
+          encode-range "$temporary/single.input" "$single_oti" 0 32 40 \
+          "$temporary/rust-repair.rqo1"
+        go run ./internal/cmd/rqframe encode-range \
+          "$temporary/single.input" "$single_oti" 0 32 40 \
+          "$temporary/single-block-repair.rqo1"
+        cmp "$temporary/single-block-repair.rqo1" "$temporary/rust-repair.rqo1"
+        go run ./internal/cmd/rqframe decode \
+          "$temporary/rust-repair.rqo1" "$temporary/go-repair.decoded"
+        cargo run --quiet --release --locked --offline \
+          --manifest-path interop/rust-oracle/Cargo.toml -- decode \
+          "$temporary/single-block-repair.rqo1" "$temporary/rust-repair.decoded"
+        cmp "$temporary/single.input" "$temporary/go-repair.decoded"
+        cmp "$temporary/single.input" "$temporary/rust-repair.decoded"
+        head -c 29 rfc6330.txt >"$temporary/partition.input"
+        partition_oti=000000001d00000602000401
+        cargo run --quiet --release --locked --offline \
+          --manifest-path interop/rust-oracle/Cargo.toml -- \
+          encode-all-source "$temporary/partition.input" "$partition_oti" \
+          "$temporary/rust-partition.rqo1"
+        go run ./internal/cmd/rqframe encode-all-source \
+          "$temporary/partition.input" "$partition_oti" \
+          "$temporary/multiblock-subblock-source.rqo1"
+        cmp "$temporary/multiblock-subblock-source.rqo1" "$temporary/rust-partition.rqo1"
+        go run ./internal/cmd/rqframe decode \
+          "$temporary/rust-partition.rqo1" "$temporary/go-partition.decoded"
+        cargo run --quiet --release --locked --offline \
+          --manifest-path interop/rust-oracle/Cargo.toml -- decode \
+          "$temporary/multiblock-subblock-source.rqo1" "$temporary/rust-partition.decoded"
+        cmp "$temporary/partition.input" "$temporary/go-partition.decoded"
+        cmp "$temporary/partition.input" "$temporary/rust-partition.decoded"
+        head -c 13 rfc6330.txt >"$temporary/padding.input"
+        padding_oti=000000000d00000501000301
+        cargo run --quiet --release --locked --offline \
+          --manifest-path interop/rust-oracle/Cargo.toml -- \
+          encode-all-source-grouped "$temporary/padding.input" "$padding_oti" \
+          2 true "$temporary/rust-grouped-shortened.rqo1"
+        go run ./internal/cmd/rqframe encode-all-source-grouped \
+          "$temporary/padding.input" "$padding_oti" 2 true \
+          "$temporary/grouped-shortened-source.rqo1"
+        cmp "$temporary/grouped-shortened-source.rqo1" \
+          "$temporary/rust-grouped-shortened.rqo1"
+        go run ./internal/cmd/rqframe decode \
+          "$temporary/rust-grouped-shortened.rqo1" \
+          "$temporary/go-grouped-shortened.decoded"
+        cargo run --quiet --release --locked --offline \
+          --manifest-path interop/rust-oracle/Cargo.toml -- decode \
+          "$temporary/grouped-shortened-source.rqo1" \
+          "$temporary/rust-grouped-shortened.decoded"
+        cmp "$temporary/padding.input" "$temporary/go-grouped-shortened.decoded"
+        cmp "$temporary/padding.input" "$temporary/rust-grouped-shortened.decoded"
+        cargo run --quiet --release --locked --offline \
+          --manifest-path interop/rust-oracle/Cargo.toml -- \
+          encode-grouped-range "$temporary/single.input" "$single_oti" \
+          0 32 40 7 false "$temporary/rust-grouped-repair.rqo1"
+        go run ./internal/cmd/rqframe encode-grouped-range \
+          "$temporary/single.input" "$single_oti" 0 32 40 7 false \
+          "$temporary/grouped-repair.rqo1"
+        cmp "$temporary/grouped-repair.rqo1" "$temporary/rust-grouped-repair.rqo1"
+        go run ./internal/cmd/rqframe decode \
+          "$temporary/rust-grouped-repair.rqo1" \
+          "$temporary/go-grouped-repair.decoded"
+        cargo run --quiet --release --locked --offline \
+          --manifest-path interop/rust-oracle/Cargo.toml -- decode \
+          "$temporary/grouped-repair.rqo1" "$temporary/rust-grouped-repair.decoded"
+        cmp "$temporary/single.input" "$temporary/go-grouped-repair.decoded"
+        cmp "$temporary/single.input" "$temporary/rust-grouped-repair.decoded"
+        cargo run --quiet --release --locked --offline \
+          --manifest-path interop/rust-oracle/Cargo.toml -- \
+          encode-all-source-grouped "$temporary/partition.input" "$partition_oti" \
+          2 true "$temporary/rust-grouped-partition.rqo1"
+        go run ./internal/cmd/rqframe encode-all-source-grouped \
+          "$temporary/partition.input" "$partition_oti" 2 true \
+          "$temporary/grouped-multiblock-subblock-source.rqo1"
+        cmp "$temporary/grouped-multiblock-subblock-source.rqo1" \
+          "$temporary/rust-grouped-partition.rqo1"
+        go run ./internal/cmd/rqframe decode \
+          "$temporary/rust-grouped-partition.rqo1" \
+          "$temporary/go-grouped-partition.decoded"
+        cargo run --quiet --release --locked --offline \
+          --manifest-path interop/rust-oracle/Cargo.toml -- decode \
+          "$temporary/grouped-multiblock-subblock-source.rqo1" \
+          "$temporary/rust-grouped-partition.decoded"
+        cmp "$temporary/partition.input" "$temporary/go-grouped-partition.decoded"
+        cmp "$temporary/partition.input" "$temporary/rust-grouped-partition.decoded"
+        cargo run --quiet --release --locked --offline \
+          --manifest-path interop/rust-oracle/Cargo.toml -- \
+          encode-loss-repair-grouped "$temporary/partition.input" "$partition_oti" \
+          2 8 "$temporary/rust-grouped-partition-loss-repair.rqo1"
+        go run ./internal/cmd/rqframe encode-loss-repair-grouped \
+          "$temporary/partition.input" "$partition_oti" 2 8 \
+          "$temporary/grouped-multiblock-subblock-loss-repair.rqo1"
+        cmp "$temporary/grouped-multiblock-subblock-loss-repair.rqo1" \
+          "$temporary/rust-grouped-partition-loss-repair.rqo1"
+        go run ./internal/cmd/rqframe decode \
+          "$temporary/rust-grouped-partition-loss-repair.rqo1" \
+          "$temporary/go-grouped-partition-loss-repair.decoded"
+        cargo run --quiet --release --locked --offline \
+          --manifest-path interop/rust-oracle/Cargo.toml -- decode \
+          "$temporary/grouped-multiblock-subblock-loss-repair.rqo1" \
+          "$temporary/rust-grouped-partition-loss-repair.decoded"
+        cmp "$temporary/partition.input" \
+          "$temporary/go-grouped-partition-loss-repair.decoded"
+        cmp "$temporary/partition.input" \
+          "$temporary/rust-grouped-partition-loss-repair.decoded"
+        (cd "$temporary" && sha256sum -c '{{.ROOT_DIR}}/interop/corpus/cross.sha256')
+
+  oracle:cpp:
+    desc: compare the pinned independent C++ corpus and preserve its K=49 divergence
+    preconditions:
+      - sh: which curl
+        msg: please install curl
+      - sh: which sha256sum
+        msg: please install sha256sum
+      - sh: which tar
+        msg: please install tar
+      - sh: which g++
+        msg: please install a C++14 compiler
+    cmds:
+      - |-
+        set -eu
+        temporary=$(mktemp -d)
+        trap 'rm -rf "$temporary"' EXIT
+        archive="$temporary/libraptorq.tar.gz"
+        curl -fsSL \
+          'https://github.com/LucaFulchir/libRaptorQ/archive/{{.LIBRAPTORQ_COMMIT}}.tar.gz' \
+          -o "$archive"
+        echo '{{.LIBRAPTORQ_ARCHIVE_SHA256}}  '"$archive" | sha256sum -c -
+        tar -xzf "$archive" -C "$temporary"
+        source_dir="$temporary/libRaptorQ-{{.LIBRAPTORQ_COMMIT}}"
+        g++ -std=c++14 -O2 -pthread \
+          -I"$source_dir/src" -I"$source_dir/external/eigen3" \
+          interop/cpp-oracle/main.cpp -o "$temporary/cpp-oracle"
+        "$temporary/cpp-oracle" raw-vectors \
+          >"$temporary/go-rust-cpp-consensus.vectors"
+        go run ./internal/codec/cmd/rawvectors | \
+          awk '($2==10 || $2==12 || $2==48) && ($3==1 || $3==7 || $3==31) && $4 != 16777215' \
+          >"$temporary/go-consensus.vectors"
+        test "$(wc -l <"$temporary/go-rust-cpp-consensus.vectors")" -eq 45
+        cmp "$temporary/go-consensus.vectors" "$temporary/go-rust-cpp-consensus.vectors"
+        "$temporary/cpp-oracle" k49-vectors \
+          >"$temporary/cpp-k49-divergence.vectors"
+        go run ./internal/codec/cmd/rawvectors | \
+          awk '$2==49 && ($3==1 || $3==7 || $3==31) && $4 != 16777215' \
+          >"$temporary/go-k49.vectors"
+        awk '$4 < 49' "$temporary/go-k49.vectors" >"$temporary/go-k49-source.vectors"
+        awk '$4 < 49' "$temporary/cpp-k49-divergence.vectors" \
+          >"$temporary/cpp-k49-source.vectors"
+        cmp "$temporary/go-k49-source.vectors" "$temporary/cpp-k49-source.vectors"
+        if cmp -s "$temporary/go-k49.vectors" "$temporary/cpp-k49-divergence.vectors"; then
+          echo 'pinned libRaptorQ unexpectedly lost its documented K=49 divergence' >&2
+          exit 1
+        fi
+        cross_case() {
+          k=$1
+          symbol_size=$2
+          object_bytes=$3
+          oti=$4
+          input="$temporary/cpp-cross-k${k}-t${symbol_size}.input"
+          head -c "$object_bytes" rfc6330.txt >"$input"
+          for pattern in repair mixed deficient; do
+            artifact="cpp-cross-k${k}-t${symbol_size}-${pattern}.rqo1"
+            go run ./internal/cmd/rqframe encode-pattern \
+              "$input" "$oti" 0 "$pattern" "$temporary/go-cross.rqo1"
+            "$temporary/cpp-oracle" encode-cross \
+              "$input" "$k" "$symbol_size" "$pattern" "$temporary/$artifact"
+            cmp "$temporary/go-cross.rqo1" "$temporary/$artifact"
+            if [ "$pattern" = deficient ]; then
+              if go run ./internal/cmd/rqframe decode \
+                "$temporary/$artifact" "$temporary/go-cross.decoded" \
+                >/dev/null 2>&1; then
+                echo "Go decoded deficient C++ K=$k T=$symbol_size frame" >&2
+                return 1
+              fi
+              if "$temporary/cpp-oracle" decode-cross \
+                "$temporary/go-cross.rqo1" "$temporary/cpp-cross.decoded" \
+                >/dev/null 2>&1; then
+                echo "C++ decoded deficient Go K=$k T=$symbol_size frame" >&2
+                return 1
+              fi
+            else
+              go run ./internal/cmd/rqframe decode \
+                "$temporary/$artifact" "$temporary/go-cross.decoded"
+              "$temporary/cpp-oracle" decode-cross \
+                "$temporary/go-cross.rqo1" "$temporary/cpp-cross.decoded"
+              cmp "$input" "$temporary/go-cross.decoded"
+              cmp "$input" "$temporary/cpp-cross.decoded"
+            fi
+          done
+        }
+        cross_case 10 31 310 000000013600001f01000101
+        cross_case 12 7 84 000000005400000701000101
+        cross_case 48 7 336 000000015000000701000101
+        (cd "$temporary" && sha256sum -c '{{.ROOT_DIR}}/interop/corpus/cpp.sha256')
+
+  oracle:test:
+    desc: smoke-test Rust encode/decode and malformed-input rejection
+    deps: [oracle:primitives, oracle:raw, oracle:cross, oracle:cpp]
+    cmds:
+      - |-
+        set -eu
+        temporary=$(mktemp -d)
+        trap 'rm -rf "$temporary"' EXIT
+        cargo run --quiet --release --locked --manifest-path interop/rust-oracle/Cargo.toml -- \
+          encode-default rfc6330.txt 1400 2 "$temporary/frame"
+        cargo run --quiet --release --locked --manifest-path interop/rust-oracle/Cargo.toml -- \
+          decode "$temporary/frame" "$temporary/decoded"
+        cmp rfc6330.txt "$temporary/decoded"
+        if cargo run --quiet --release --locked --manifest-path interop/rust-oracle/Cargo.toml -- \
+          encode-default rfc6330.txt 0 2 "$temporary/invalid" \
+          >"$temporary/invalid.out" 2>&1; then
+          echo 'Rust oracle accepted an invalid zero MTU' >&2
+          exit 1
+        fi
+        grep -F 'MTU must be positive' "$temporary/invalid.out" >/dev/null
+
+  ci:
+    desc: run all local correctness gates
+    cmds:
+      - task: lint
+      - task: lint:govulncheck
+      - task: test
+      - task: mutation:gate
+      - task: test:386
+      - task: test:checkptr
+      - task: test:race
+      - task: fuzz:smoke
+      - task: bench:smoke
+      - task: verify
+      - task: oracle:test

@@ -1,0 +1,4 @@
+profile=rfc6330-section-5.8-v1 kprime=10 seed=633058015e8c0001 pool=65536 confidence=one-sided-wilson-95 sampling=distinct-uniform-from-preregistered-24-bit-esi-pool
+overhead=0 trials=100000 failures=626 observed=0.00626 upper95=0.00668382195 rfc-limit=0.01 upper-within-limit=true
+overhead=1 trials=100000 failures=4 observed=4e-05 upper95=8.90945804e-05 rfc-limit=0.0001 upper-within-limit=true
+overhead=2 trials=3000000 failures=0 observed=0 upper95=9.01847005e-07 rfc-limit=1e-06 upper-within-limit=true

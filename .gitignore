@@ -1,0 +1,15 @@
+.DS_Store
+/.foo/
+/bin/
+/coverage.out
+/go-mutesting-agentic.json
+/go-mutesting-gitlab.json
+/go-mutesting-report.html
+/go-mutesting-summary.json
+/interop/rust-oracle/target/
+/formal/states/
+/formal/*.out
+/formal/*_TTrace_*.tla
+/formal/*_TTrace_*.cfg
+/formal/*_TTrace_*.bin
+*.swp

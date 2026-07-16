@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "mutants": [
+    {
+      "id": "6d9dedf7e37fbc705d359febc2a865da",
+      "file": "internal/gf256/gf256.go",
+      "mutator": "numbers/incrementer",
+      "line": 22
+    },
+    {
+      "id": "64a676bc87479142a23d42c2f00c50e0",
+      "file": "internal/gf256/gf256.go",
+      "mutator": "numbers/incrementer",
+      "line": 39
+    },
+    {
+      "id": "0c01f436f4aa833019d778a3b235504a",
+      "file": "internal/rfc6330/partition.go",
+      "mutator": "numbers/incrementer",
+      "line": 24
+    }
+  ]
+}
