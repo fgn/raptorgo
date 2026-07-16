@@ -14,4 +14,10 @@
 //
 // All errors returned by this package wrap one of the exported sentinel
 // errors and can be matched with errors.Is.
+//
+// RaptorQ is the work of its inventors and the RFC 6330 authors; this
+// package is an independent implementation and claims no rights in the
+// RaptorQ code or technology. See the repository README for attribution,
+// the project's research status, and exactly which properties have been
+// verified by which method.
 package raptorgo

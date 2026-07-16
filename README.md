@@ -8,7 +8,33 @@ The runtime package has no CGo or third-party dependencies.
 go get github.com/fgn/raptorgo
 ```
 
-Implemented behavior includes:
+## Attribution and research status
+
+RaptorQ is not our invention. Raptor codes are the work of Amin
+Shokrollahi, building on Michael Luby's LT fountain codes; RaptorQ was
+developed at Digital Fountain and Qualcomm and standardized by the IETF as
+[RFC 6330](https://www.rfc-editor.org/rfc/rfc6330.html), authored by
+M. Luby, A. Shokrollahi, M. Watson, T. Stockhammer, and L. Minder. This
+repository is an independent implementation of that specification and
+claims no rights in the RaptorQ code, the RaptorQ name, or the underlying
+technology. Credit for the code belongs to its inventors; defects in this
+implementation belong to this project.
+
+The project is a research exercise in applying formal-methods and
+differential-verification techniques to a nontrivial protocol
+implementation. **It should not be read as "formally verified."** The
+TLA+ artifacts model-check bounded abstractions of selected subsystems
+and replay production-generated traces against those models; they check
+finite safety properties of models and recorded traces, not the compiled
+Go code, and establish no liveness of the real implementation. The exact
+claim-to-evidence map is in [`docs/invariants.md`](docs/invariants.md),
+the formal scope and its limits in [`formal/README.md`](formal/README.md),
+and the bounded recovery statistics in
+[`docs/recovery.md`](docs/recovery.md).
+
+## Implemented behavior
+
+The implementation covers:
 
 - RFC Section 4.3 parameter derivation and canonical 12-byte OTI handling;
 - source-block and sub-block partitioning for `Z >= 1` and `N >= 1`;
@@ -55,7 +81,7 @@ mandatory transport policy. `DefaultLimits` is conservative application
 policy, while `RFCWireLimits` admits the full wire domain for parsing and
 conformance work.
 
-## Correctness evidence
+## Correctness evidence and methodology
 
 The implementation is checked in independent layers:
 
@@ -76,6 +102,18 @@ The implementation is checked in independent layers:
 
 RFC Editor erratum 5548 is applied: the maximum transfer length is
 `942574504275`.
+
+To be precise about what that evidence does and does not establish: the
+TLA+ models and trace replays establish bounded safety properties of
+abstractions and of recorded executions, with negative controls proving
+the checks are not vacuous; differential vectors establish byte-identical
+behavior on the domains actually compared; exhaustive tests establish
+exactly the finite domains they enumerate (GF(256) algebra, parameter
+tables, ESI/ISI maps); and the Section 5.8 recovery profile is a
+preregistered, bounded statistical measurement — explicitly not a proof
+over every RFC row and ESI. None of this amounts to a machine-checked
+proof of functional correctness of the Go implementation, and no such
+claim is made.
 
 The compact evidence index is in [`docs/invariants.md`](docs/invariants.md).
 Recovery statistics and their explicit limits are in

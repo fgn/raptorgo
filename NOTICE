@@ -4,5 +4,11 @@ Copyright 2026 FGN Research and Development B.V.
 This product includes software developed by FGN Research and
 Development B.V.
 
+raptorgo is an independent implementation of the RaptorQ forward error
+correction scheme specified in RFC 6330. The RaptorQ code is the work
+of its inventors and of the RFC 6330 authors (M. Luby, A. Shokrollahi,
+M. Watson, T. Stockhammer, and L. Minder); this project claims no
+rights in the RaptorQ code, name, or underlying technology.
+
 Third-party components distributed with this repository are listed in
 THIRD_PARTY_NOTICES.md together with their licenses.
