@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"testing"
+
+	"github.com/fgn/raptorgo/internal/codec"
 )
 
 var packetAllocationSink []byte
@@ -375,6 +377,63 @@ func TestObjectEncoderSubBlockedSystematicPacketAllocations(t *testing.T) {
 	})
 	if allocations != 1 {
 		t.Fatalf("sub-blocked systematic packet allocations = %.1f, want exactly one owned result", allocations)
+	}
+}
+
+func TestObjectEncoderSourcePacketPeakIncludesRepairCache(t *testing.T) {
+	oti := OTI{TransferLength: 40, SymbolSize: 4, SourceBlocks: 1, SubBlocks: 1, SymbolAlignment: 1}
+	encoder, err := NewObjectEncoder(patternedObject(oti.TransferLength), oti, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	k, err := SourceBlockSymbols(oti, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := encoder.Packet(0, k, 1, false); err != nil {
+		t.Fatalf("prime repair cache: %v", err)
+	}
+	retained, err := codec.SourceBlockEncoderRetainedBackingBytes(k, uint32(oti.SymbolSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !encoder.cacheValid || encoder.cache == nil || encoder.cacheBytes != retained {
+		t.Fatalf("repair cache state valid=%v encoder=%p bytes=%d, want %d", encoder.cacheValid, encoder.cache, encoder.cacheBytes, retained)
+	}
+	required := oti.TransferLength + retained + PayloadIDEncodedSize + uint64(oti.SymbolSize)
+	encoder.limits.MaxWorkingMemory = required
+	if packet, err := encoder.Packet(0, 0, 1, false); err != nil || len(packet) != PayloadIDEncodedSize+int(oti.SymbolSize) {
+		t.Fatalf("exact cached source-packet peak returned %d bytes, %v", len(packet), err)
+	}
+	encoder.limits.MaxWorkingMemory--
+	if packet, err := encoder.Packet(0, 0, 1, false); !errors.Is(err, ErrLimitExceeded) || packet != nil {
+		t.Fatalf("over-limit cached source packet=%x error=%v", packet, err)
+	}
+}
+
+func TestObjectEncoderDropsRepairCacheBeforeFailedReplacement(t *testing.T) {
+	oti := OTI{TransferLength: 80, SymbolSize: 4, SourceBlocks: 2, SubBlocks: 1, SymbolAlignment: 1}
+	encoder, err := NewObjectEncoder(patternedObject(oti.TransferLength), oti, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstK, err := SourceBlockSymbols(oti, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := encoder.Packet(0, firstK, 1, false); err != nil {
+		t.Fatalf("prime first repair cache: %v", err)
+	}
+	encoder.limits.MaxSourceBlockBytes = 0
+	secondK, err := SourceBlockSymbols(oti, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if packet, err := encoder.Packet(1, secondK, 1, false); !errors.Is(err, ErrInvalidLimits) || packet != nil {
+		t.Fatalf("failed replacement packet=%x error=%v", packet, err)
+	}
+	if encoder.cacheValid || encoder.cache != nil || encoder.cacheBytes != 0 {
+		t.Fatalf("failed replacement retained cache valid=%v encoder=%p bytes=%d", encoder.cacheValid, encoder.cache, encoder.cacheBytes)
 	}
 }
 

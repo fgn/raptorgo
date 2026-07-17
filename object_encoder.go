@@ -20,6 +20,7 @@ type ObjectEncoder struct {
 	object     []byte
 	cacheBlock uint8
 	cacheValid bool
+	cacheBytes uint64
 	cache      *codec.SourceBlockEncoder
 }
 
@@ -152,7 +153,7 @@ func (encoder *ObjectEncoder) Packet(
 
 	if isSource {
 		if peakErr := checkSourcePacketPeak(
-			uint64(len(encoder.object)), 0, packetBytes, encoder.limits.MaxWorkingMemory,
+			uint64(len(encoder.object)), encoder.cacheBytes, packetBytes, encoder.limits.MaxWorkingMemory,
 		); peakErr != nil {
 			return nil, peakErr
 		}
@@ -180,7 +181,7 @@ func (encoder *ObjectEncoder) Packet(
 			ErrLimitExceeded, peak, encoder.limits.MaxWorkingMemory,
 		)
 	}
-	blockEncoder, err := encoder.repairEncoder(sourceBlockNumber, k)
+	blockEncoder, err := encoder.repairEncoder(sourceBlockNumber, k, retained)
 	if err != nil {
 		return nil, err
 	}
@@ -284,11 +285,15 @@ func (encoder *ObjectEncoder) buildRepairPacket(
 	return packet, nil
 }
 
-func (encoder *ObjectEncoder) repairEncoder(sourceBlockNumber uint8, k uint32) (*codec.SourceBlockEncoder, error) {
+func (encoder *ObjectEncoder) repairEncoder(
+	sourceBlockNumber uint8,
+	k uint32,
+	retained uint64,
+) (*codec.SourceBlockEncoder, error) {
 	if encoder.cacheValid && encoder.cacheBlock == sourceBlockNumber {
 		return encoder.cache, nil
 	}
-	encoder.cache, encoder.cacheValid = nil, false
+	encoder.cache, encoder.cacheValid, encoder.cacheBytes = nil, false, 0
 	block, err := BuildSourceBlock(encoder.object, encoder.oti, sourceBlockNumber, encoder.limits)
 	if err != nil {
 		return nil, err
@@ -316,7 +321,7 @@ func (encoder *ObjectEncoder) repairEncoder(sourceBlockNumber uint8, k uint32) (
 	if err != nil {
 		return nil, fmt.Errorf("%w: SBN %d: %w", ErrObjectEncoder, sourceBlockNumber, err)
 	}
-	encoder.cacheBlock, encoder.cacheValid, encoder.cache = sourceBlockNumber, true, result
+	encoder.cacheBlock, encoder.cacheValid, encoder.cacheBytes, encoder.cache = sourceBlockNumber, true, retained, result
 	return result, nil
 }
 
