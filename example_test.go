@@ -65,6 +65,34 @@ func Example() {
 	// hello, RaptorQ
 }
 
+func ExampleObjectEncoder_PacketInto() {
+	object := []byte("abcdefgh")
+	oti := raptorgo.OTI{
+		TransferLength: 8, SymbolSize: 4,
+		SourceBlocks: 1, SubBlocks: 1, SymbolAlignment: 1,
+	}
+	encoder, err := raptorgo.NewObjectEncoder(object, oti, raptorgo.DefaultLimits())
+	if err != nil {
+		panic(err)
+	}
+
+	// Reuse this buffer for successive source packets. PacketInto returns the
+	// exact packet-length prefix and performs no heap allocation on this path.
+	buffer := make([]byte, raptorgo.PayloadIDEncodedSize+int(oti.SymbolSize))
+	packet, err := encoder.PacketInto(buffer, 0, 1, 1, false)
+	if err != nil {
+		panic(err)
+	}
+	view, err := raptorgo.ParseEncodingPacket(packet, oti, raptorgo.DefaultLimits())
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("payload=%q aliases-buffer=%v\n", view.Payload(), &packet[0] == &buffer[0])
+
+	// Output:
+	// payload="efgh" aliases-buffer=true
+}
+
 // Example_authenticatedTransfer is the recommended receiver pattern. The
 // sender transmits the 12-byte OTI and a SHA-256 digest over an authenticated
 // out-of-band channel, the network loses one source packet in five, repair

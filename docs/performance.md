@@ -25,21 +25,23 @@ with a network-realistic symbol size of T=1280 bytes and one source block.
 
 | K      | Object    | Construct + first repair | Cached repair packet | Systematic packet |
 |-------:|----------:|-------------------------:|---------------------:|------------------:|
-| 10     | 12.8 KB   | 0.92 ms (13.9 MB/s)      | 7.8 µs (164 MB/s)    | 7.3 µs            |
-| 100    | 128 KB    | 5.9 ms (21.7 MB/s)       | 12.9 µs (100 MB/s)   | 70 µs             |
-| 1,000  | 1.28 MB   | 65 ms (19.6 MB/s)        | 7.7 µs (167 MB/s)    | 476 µs            |
-| 10,000 | 12.8 MB   | 0.96 s (13.4 MB/s)       | 7.1 µs (180 MB/s)    | 2.8 ms            |
+| 10     | 12.8 KB   | 0.92 ms (13.9 MB/s)      | 7.8 µs (164 MB/s)    | O(T)               |
+| 100    | 128 KB    | 5.9 ms (21.7 MB/s)       | 12.9 µs (100 MB/s)   | O(T)               |
+| 1,000  | 1.28 MB   | 65 ms (19.6 MB/s)        | 7.7 µs (167 MB/s)    | O(T)               |
+| 10,000 | 12.8 MB   | 0.96 s (13.4 MB/s)       | 7.1 µs (180 MB/s)    | 0.320 µs            |
 
 - **Construct + first repair** is the one-time cost per source block: building
   the encoder and solving the repair plan (throughput in object bytes).
 - **Cached repair packet** is the steady-state cost per repair symbol once the
-  block's plan is cached: roughly 160–180 MB/s of symbol payload at 3
+  block's plan is cached: roughly 160–180 MB/s of symbol payload at 2
   allocations per packet, independent of K.
-- **Systematic packet** currently rebuilds the source-block view per call, so
-  its cost grows with K·T (visible as one block-sized allocation per op).
-  Group multiple source symbols into one `Packet` call to amortize this, or
-  emit large blocks as repair symbols from the cached plan. Removing the
-  rebuild is listed in [roadmap.md](roadmap.md) optimization work.
+- **Systematic packet** scatters only the requested bytes directly from the
+  immutable object, including RFC sub-block transposition and shortened final
+  symbols. Its cost is independent of K: the pinned K=10,000 paired median was
+  320.3 ns and 1,408 B/op with the one caller-owned result allocation.
+  `PacketInto` with a reusable buffer measured 73.0 ns, 0 B/op, and 0
+  allocations/op. See the complete alternating-binary methodology and raw
+  ranges in [`dev/perf/optimization-log.md`](../dev/perf/optimization-log.md).
 
 ## Decoding with ten percent source loss, T=1280
 
@@ -64,6 +66,9 @@ beyond K, consistent with the bounded recovery statistics in
   the cost that scales with K. For steady streams, larger blocks amortize the
   solve; for latency-sensitive transfers, smaller blocks (or several blocks
   via `DecoderBlockBytes`) bound the per-block solve time.
+- Use `Packet` when an independently owned packet is convenient. Use
+  `PacketInto` with one buffer per concurrent caller when packet emission sits
+  on an allocation-sensitive hot path; the returned slice aliases the buffer.
 - All decoder memory is preflighted against `Limits` before allocation;
   `ObjectEncoderWorkspaceBackingBytes` and `ObjectDecoderWorkspaceBackingBytes`
   report the peaks for capacity planning.

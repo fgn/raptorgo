@@ -142,8 +142,9 @@ command, and block-size guidance are in
 Practical limits: the API is in-memory — object-sized buffers on both ends,
 preflighted against `Limits` — not a streaming file API; one source block
 spans at most 56,403 symbols; transfers are capped at 942,574,504,275 bytes
-(RFC erratum 5548 applied); systematic packet emission currently rebuilds
-its source block per call, so group source symbols on large blocks.
+(RFC erratum 5548 applied). Systematic packets are emitted directly from the
+immutable object in O(packet bytes); `PacketInto` accepts a reusable caller
+buffer for a zero-allocation source-packet path.
 
 ## Implemented behavior
 

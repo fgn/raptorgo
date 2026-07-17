@@ -18,6 +18,8 @@
 - [x] Add independent rank-sufficiency and explicitly bounded K'=10 RFC Section
   5.8 empirical evidence; retain the all-row statistical boundary in the audit.
 - [x] Add benchmarks by K, T, loss, and overhead.
+- [x] Emit contiguous and sub-blocked systematic packets directly in
+  O(packet bytes), with a zero-allocation caller-buffer API.
 - [x] Add a pinned mutation-testing CI gate plus changed-line and scheduled
   discovery campaigns with a reviewed equivalence baseline.
 - [x] Pass amd64, 386, race, checkptr, fuzz-smoke, formal, oracle, and release
