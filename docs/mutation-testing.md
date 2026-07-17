@@ -59,8 +59,8 @@ The baseline is intentionally tiny and reviewed by stable mutant ID:
 
 Never update `mutation/baseline.json` automatically in CI. A proposed entry
 must include its exact diff and a behavioral-equivalence explanation here.
-Deleting production behavior or weakening an invariant is not equivalent just
-because another gate happens to catch it.
+Deleting production behavior or weakening an invariant is not equivalent
+merely because another gate happens to catch it.
 
 ## Interpreting results
 

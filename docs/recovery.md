@@ -12,7 +12,7 @@ polynomial-arithmetic elimination oracle ranks the complete Figure 5 system.
 The production decoder must complete exactly for full-rank systems and recover
 the original bytes. Larger hybrid-domain loss/repair tests, the maximum-K
 parity-checked loss/repair release test, and Rust/C++ cross-decoding extend this
-evidence without pretending that finite tests prove every possible receive set.
+evidence without claiming that finite tests prove every possible receive set.
 
 The release profile is preregistered and reproducible:
 

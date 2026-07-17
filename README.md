@@ -93,7 +93,7 @@ The implementation is checked in independent layers:
 6. bidirectional C++ cross-decoding in the K=10/12/48 consensus domain for
    repair-only, mixed loss/reorder/duplicate, and deficient sets;
 7. independent rank-sufficiency checks and a bounded preregistered Section 5.8
-   K'=10 fixed-pool recovery profile, explicitly not an all-row proof; and
+   K'=10 fixed-pool recovery profile, explicitly not an all-row proof;
 8. bounded TLA+ models plus production-derived positive traces and forged or
    deleted negative traces; and
 9. a pinned mutation-testing gate over critical resource, wire, GF(256), and
@@ -102,13 +102,13 @@ The implementation is checked in independent layers:
 RFC Editor erratum 5548 is applied: the maximum transfer length is
 `942574504275`.
 
-To be precise about what that evidence does and does not establish: the
-TLA+ models and trace replays establish bounded safety properties of
-abstractions and of recorded executions, with negative controls proving
-the checks are not vacuous; differential vectors establish byte-identical
-behavior on the domains actually compared; exhaustive tests establish
-exactly the finite domains they enumerate (GF(256) algebra, parameter
-tables, ESI/ISI maps); and the Section 5.8 recovery profile is a
+That evidence has limits. The TLA+ models and trace replays establish
+bounded safety properties of abstractions and of recorded executions,
+with negative controls proving the checks are not vacuous; differential
+vectors establish byte-identical behavior on the domains actually
+compared; exhaustive tests cover exactly the finite domains they
+enumerate (GF(256) algebra, parameter tables, ESI/ISI maps); and the
+Section 5.8 recovery profile is a
 preregistered, bounded statistical measurement, explicitly not a proof
 over every RFC row and ESI. None of this amounts to a machine-checked
 proof of functional correctness of the Go implementation, and no such

@@ -85,14 +85,14 @@ the exact phase-one `i'=i+1, u'=u+r-1` update, `i+u <= L`, and the exact
 `M-L` discard count, ordered phase boundaries, and terminal completion only
 after phase five. Negative controls delete phase three, forge the discard
 count, accept the under-budget solve, forge the initial budget, forge the RFC
-initial `u`, and forge a later phase-one `u` update. Dense
-tests independently check final
-solver results, while matrix-container tests compare individual sparse
-mutations. The production hybrid residual and substitution path is bound by
-the `HybridTrace.tla` trace described below; the eager trace remains focused on
-its phase and resource-accounting contract. Another
-negative permutes phase labels while retaining numeric snapshots, proving the
-record labels themselves are bound to the ordered phase transitions. The trace
+initial `u`, and forge a later phase-one `u` update. Dense tests
+independently check final solver results, while matrix-container tests
+compare individual sparse mutations. The production hybrid residual and
+substitution path is bound by the `HybridTrace.tla` trace described below;
+the eager trace remains focused on its phase and resource-accounting
+contract. Another negative permutes phase labels while retaining numeric
+snapshots, proving the record labels themselves are bound to the ordered
+phase transitions. The trace
 does not duplicate GF(256) algebra in TLA+ and does not measure allocator or
 runtime heap peaks beyond the implementation's declared logical-backing model.
 
@@ -109,11 +109,11 @@ phase. Negative controls delete a replay event, forge frozen and elimination
 events, forge an observed permutation or binary snapshot, enter dense
 completion early, corrupt a substitution row or dependency, accept each
 one-byte-short budget, forge the RHS map, and alter an observed residual
-coefficient, dense solution, or final result. Replay maps, binary/HDPC rows, working
-right-hand sides, the materialized residual system, dense solution,
+coefficient, dense solution, or final result. Replay maps, binary/HDPC rows,
+working right-hand sides, the materialized residual system, dense solution,
 substitution operands/results, immutable input, and final result are emitted as
 deep-copied values at production executor mutation points; normal execution
-passes a nil observer and an allocation regression requires the substitution
+passes a nil observer, and an allocation regression requires the substitution
 trace hook to remain zero-cost. The generator byte-compares every production
 binary snapshot with an independent replay, checks every coupled non-HDPC and
 HDPC equation plus every residual equation against a known solution, checks the
