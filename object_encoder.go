@@ -135,7 +135,9 @@ func (encoder *ObjectEncoder) Packet(
 // payload ID and the requested symbols; passing a full-sized buffer is valid
 // when shortenFinal may produce a shorter result. The returned bytes alias
 // destination, whose unused tail is left unchanged. A source-packet call does
-// not allocate when destination is large enough.
+// not allocate when destination is large enough. Concurrent calls are safe,
+// but callers must use distinct destination buffers for concurrently live
+// results and must not mutate a buffer until its call returns.
 func (encoder *ObjectEncoder) PacketInto(
 	destination []byte,
 	sourceBlockNumber uint8,
