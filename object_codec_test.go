@@ -384,6 +384,110 @@ func TestObjectEncoderConcurrentRepairPackets(t *testing.T) {
 	}
 }
 
+func TestObjectEncoderPacketsOwnIndependentBacking(t *testing.T) {
+	t.Parallel()
+
+	oti := OTI{TransferLength: 29, SymbolSize: 6, SourceBlocks: 2, SubBlocks: 4, SymbolAlignment: 1}
+	encoder, err := NewObjectEncoder(patternedObject(oti.TransferLength), oti, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	k, err := SourceBlockSymbols(oti, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := encoder.Packet(1, 0, k, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSource := append([]byte(nil), source...)
+	for index := range source {
+		source[index] ^= 0xff
+	}
+	sourceAgain, err := encoder.Packet(1, 0, k, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(sourceAgain, wantSource) {
+		t.Fatalf("source packet mutation affected later output: got %x, want %x", sourceAgain, wantSource)
+	}
+
+	repair, err := encoder.Packet(1, k+7, 2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRepair := append([]byte(nil), repair...)
+	for index := range repair {
+		repair[index] ^= 0xff
+	}
+	repairAgain, err := encoder.Packet(1, k+7, 2, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(repairAgain, wantRepair) {
+		t.Fatalf("repair packet mutation affected later output: got %x, want %x", repairAgain, wantRepair)
+	}
+}
+
+func TestObjectEncoderConcurrentMixedSourceAndRepairPackets(t *testing.T) {
+	oti := OTI{TransferLength: 29, SymbolSize: 6, SourceBlocks: 2, SubBlocks: 4, SymbolAlignment: 1}
+	encoder, err := NewObjectEncoder(patternedObject(oti.TransferLength), oti, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	type packetRequest struct {
+		sourceBlock     uint8
+		firstESI, count uint32
+		shorten         bool
+		want            []byte
+	}
+	requests := make([]packetRequest, 0, 4)
+	for sourceBlockIndex := 0; sourceBlockIndex < int(oti.SourceBlocks); sourceBlockIndex++ {
+		sourceBlock := uint8(sourceBlockIndex)
+		k, err := SourceBlockSymbols(oti, sourceBlock)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, request := range []packetRequest{
+			{sourceBlock: sourceBlock, firstESI: 0, count: k, shorten: true},
+			{sourceBlock: sourceBlock, firstESI: k + 9, count: 2},
+		} {
+			request.want, err = encoder.Packet(request.sourceBlock, request.firstESI, request.count, request.shorten)
+			if err != nil {
+				t.Fatal(err)
+			}
+			requests = append(requests, request)
+		}
+	}
+
+	var wait sync.WaitGroup
+	errorsChannel := make(chan error, 16)
+	for worker := 0; worker < 16; worker++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			for iteration := 0; iteration < 8; iteration++ {
+				for _, request := range requests {
+					got, err := encoder.Packet(request.sourceBlock, request.firstESI, request.count, request.shorten)
+					if err != nil {
+						errorsChannel <- err
+						return
+					}
+					if !bytes.Equal(got, request.want) {
+						errorsChannel <- errors.New("concurrent mixed packet differs")
+						return
+					}
+				}
+			}
+		}()
+	}
+	wait.Wait()
+	close(errorsChannel)
+	for err := range errorsChannel {
+		t.Error(err)
+	}
+}
+
 func TestObjectDecoderConcurrentSourcePacketsDeliverOnce(t *testing.T) {
 	oti := OTI{TransferLength: 80, SymbolSize: 4, SourceBlocks: 1, SubBlocks: 1, SymbolAlignment: 1}
 	want := patternedObject(oti.TransferLength)

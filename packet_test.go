@@ -193,6 +193,144 @@ func TestSourcePacketPaddingLayoutInvariant(t *testing.T) {
 	}
 }
 
+func TestObjectEncoderSourcePacketMatchesIndependentBlockLayouts(t *testing.T) {
+	for symbolSize := uint16(1); symbolSize <= 12; symbolSize++ {
+		for alignment := uint8(1); uint16(alignment) <= symbolSize; alignment++ {
+			if symbolSize%uint16(alignment) != 0 {
+				continue
+			}
+			units := symbolSize / uint16(alignment)
+			subBlockCandidates := []uint16{1, (units + 1) / 2, units, units + 1}
+			seenSubBlocks := make(map[uint16]bool, len(subBlockCandidates))
+			for _, subBlocks := range subBlockCandidates {
+				if seenSubBlocks[subBlocks] {
+					continue
+				}
+				seenSubBlocks[subBlocks] = true
+				for sourceBlocks := uint8(1); sourceBlocks <= 3; sourceBlocks++ {
+					lengthCandidates := []uint64{
+						1,
+						uint64(symbolSize),
+						uint64(symbolSize) + 1,
+						uint64(symbolSize)*uint64(2*sourceBlocks+1) - 1,
+						uint64(symbolSize)*uint64(3*sourceBlocks) - 1,
+					}
+					if symbolSize > 1 {
+						lengthCandidates = append(lengthCandidates, uint64(symbolSize-1))
+					}
+					seenLengths := make(map[uint64]bool, len(lengthCandidates))
+					for _, transferLength := range lengthCandidates {
+						if seenLengths[transferLength] {
+							continue
+						}
+						seenLengths[transferLength] = true
+						oti := OTI{
+							TransferLength: transferLength, SymbolSize: symbolSize,
+							SourceBlocks: sourceBlocks, SubBlocks: subBlocks, SymbolAlignment: alignment,
+						}
+						object := patternedObject(transferLength)
+						encoder, err := NewObjectEncoder(object, oti, DefaultLimits())
+						if err != nil {
+							t.Fatalf("encoder %+v: %v", oti, err)
+						}
+						for sourceBlockIndex := 0; sourceBlockIndex < int(sourceBlocks); sourceBlockIndex++ {
+							sourceBlock := uint8(sourceBlockIndex)
+							block, err := BuildSourceBlock(object, oti, sourceBlock, DefaultLimits())
+							if err != nil {
+								t.Fatalf("block %+v SBN=%d: %v", oti, sourceBlock, err)
+							}
+							k := block.SymbolCount()
+							if k == 0 {
+								continue
+							}
+							groups := [][2]uint32{{0, 1}, {k - 1, 1}, {0, k}}
+							if k > 2 {
+								groups = append(groups, [2]uint32{1, min(uint32(2), k-1)})
+								middle := k / 2
+								groups = append(groups, [2]uint32{middle, min(uint32(3), k-middle)})
+							}
+							for _, group := range groups {
+								for _, shorten := range []bool{false, true} {
+									got, err := encoder.Packet(sourceBlock, group[0], group[1], shorten)
+									if err != nil {
+										t.Fatalf("packet %+v SBN=%d ESI=%d count=%d shorten=%v: %v", oti, sourceBlock, group[0], group[1], shorten, err)
+									}
+									want := expectedSourcePacketFromBlock(t, block, oti, group[0], group[1], shorten)
+									if !bytes.Equal(got, want) {
+										t.Fatalf("packet %+v SBN=%d ESI=%d count=%d shorten=%v: got %x, want %x", oti, sourceBlock, group[0], group[1], shorten, got, want)
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func expectedSourcePacketFromBlock(
+	t *testing.T,
+	block SourceBlock,
+	oti OTI,
+	firstESI, count uint32,
+	shorten bool,
+) []byte {
+	t.Helper()
+	header, err := (PayloadID{SourceBlockNumber: block.Number(), EncodingSymbolID: firstESI}).MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := append([]byte(nil), header...)
+	for offset := uint32(0); offset < count; offset++ {
+		symbol, err := block.Symbol(firstESI + offset)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result = append(result, symbol...)
+	}
+	if shorten {
+		layout, err := paddingLayoutForSourceBlock(oti, block.Number())
+		if err != nil {
+			t.Fatal(err)
+		}
+		padding, err := layout.trailingPadding(firstESI + count - 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result = result[:uint64(len(result))-padding]
+	}
+	return result
+}
+
+func TestObjectEncoderPacketLimitsAtExactBoundaries(t *testing.T) {
+	oti := OTI{TransferLength: 12, SymbolSize: 4, SourceBlocks: 1, SubBlocks: 1, SymbolAlignment: 1}
+	object := patternedObject(oti.TransferLength)
+	exact := DefaultLimits()
+	exact.MaxPacketBytes = PayloadIDEncodedSize + 8
+	exact.MaxSymbolsPerPacket = 2
+	encoder, err := NewObjectEncoder(object, oti, exact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if packet, err := encoder.Packet(0, 0, 2, false); err != nil || len(packet) != PayloadIDEncodedSize+8 {
+		t.Fatalf("exact packet=%x error=%v", packet, err)
+	}
+	if packet, err := encoder.Packet(0, 0, 3, false); !errors.Is(err, ErrInvalidPacket) || packet != nil {
+		t.Fatalf("over-count packet=%x error=%v", packet, err)
+	}
+
+	short := exact
+	short.MaxPacketBytes--
+	encoder, err = NewObjectEncoder(object, oti, short)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if packet, err := encoder.Packet(0, 0, 2, false); !errors.Is(err, ErrLimitExceeded) || packet != nil {
+		t.Fatalf("over-byte packet=%x error=%v", packet, err)
+	}
+}
+
 func TestFinalSourceSymbolPrecedesTrailingEmptyBlocks(t *testing.T) {
 	t.Parallel()
 
