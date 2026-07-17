@@ -263,6 +263,14 @@ func TestObjectEncoderSourcePacketMatchesIndependentBlockLayouts(t *testing.T) {
 									if !bytes.Equal(got, want) {
 										t.Fatalf("packet %+v SBN=%d ESI=%d count=%d shorten=%v: got %x, want %x", oti, sourceBlock, group[0], group[1], shorten, got, want)
 									}
+									destination := bytes.Repeat([]byte{0xa5}, len(want)+1)
+									into, err := encoder.PacketInto(destination, sourceBlock, group[0], group[1], shorten)
+									if err != nil {
+										t.Fatalf("PacketInto %+v SBN=%d ESI=%d count=%d shorten=%v: %v", oti, sourceBlock, group[0], group[1], shorten, err)
+									}
+									if !bytes.Equal(into, want) || destination[len(want)] != 0xa5 {
+										t.Fatalf("PacketInto %+v SBN=%d ESI=%d count=%d shorten=%v: got %x tail=%x, want %x", oti, sourceBlock, group[0], group[1], shorten, into, destination[len(want):], want)
+									}
 								}
 							}
 						}
@@ -480,6 +488,29 @@ func TestObjectEncoderSystematicPacketIntoAllocations(t *testing.T) {
 		if allocations != 0 {
 			t.Fatalf("N=%d systematic PacketInto allocations = %.1f, want zero", subBlocks, allocations)
 		}
+	}
+}
+
+func TestObjectEncoderPacketIntoMaximumRepairPayloadID(t *testing.T) {
+	oti := OTI{TransferLength: 1, SymbolSize: 1, SourceBlocks: 1, SubBlocks: 1, SymbolAlignment: 1}
+	encoder, err := NewObjectEncoder([]byte{0x7b}, oti, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	destination := bytes.Repeat([]byte{0xa5}, PayloadIDEncodedSize+int(oti.SymbolSize)+1)
+	packet, err := encoder.PacketInto(destination, 0, MaxEncodingSymbolID, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view, err := ParseEncodingPacket(packet, oti, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.PayloadID() != (PayloadID{EncodingSymbolID: MaxEncodingSymbolID}) {
+		t.Fatalf("maximum repair payload ID = %+v", view.PayloadID())
+	}
+	if destination[len(packet)] != 0xa5 {
+		t.Fatalf("PacketInto overwrote destination tail: %x", destination[len(packet):])
 	}
 }
 
