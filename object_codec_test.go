@@ -8,6 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestObjectEncoderGroupedSourceAndRepairPackets(t *testing.T) {
@@ -497,6 +498,72 @@ func TestObjectCodecInputAndResourceValidation(t *testing.T) {
 	}
 	if packet, err := encoder.Packet(1, 0, 1, false); !errors.Is(err, ErrInvalidPacket) || packet != nil {
 		t.Fatalf("unknown-block packet=%v error=%v", packet, err)
+	}
+}
+
+func TestObjectCodecRFCMaximumSourceBlocks(t *testing.T) {
+	done := make(chan error, 1)
+	go func() {
+		const sourceBlocks = 255
+		oti := OTI{
+			TransferLength: sourceBlocks, SymbolSize: 1,
+			SourceBlocks: sourceBlocks, SubBlocks: 1, SymbolAlignment: 1,
+		}
+		want := patternedObject(oti.TransferLength)
+		encoder, err := NewObjectEncoder(want, oti, DefaultLimits())
+		if err != nil {
+			done <- err
+			return
+		}
+		decoder, err := NewObjectDecoder(
+			oti, DefaultLimits(), "maximum-source-blocks",
+			func(request VerificationRequest) error {
+				got, readErr := io.ReadAll(request.Object)
+				if readErr != nil {
+					return readErr
+				}
+				if !bytes.Equal(got, want) {
+					return errors.New("maximum-source-block object differs")
+				}
+				return nil
+			},
+			func(object VerifiedObject) error {
+				if !bytes.Equal(object.Bytes, want) {
+					return errors.New("maximum-source-block delivery differs")
+				}
+				return nil
+			},
+		)
+		if err != nil {
+			done <- err
+			return
+		}
+		for sourceBlockIndex := 0; sourceBlockIndex < sourceBlocks; sourceBlockIndex++ {
+			sourceBlock := uint8(sourceBlockIndex)
+			packet, packetErr := encoder.Packet(sourceBlock, 0, 1, false)
+			if packetErr != nil {
+				done <- packetErr
+				return
+			}
+			if _, addErr := decoder.AddPacket(packet); addErr != nil {
+				done <- addErr
+				return
+			}
+		}
+		if decoder.State() != ObjectDelivered || decoder.CompletedBlocks() != sourceBlocks {
+			done <- fmt.Errorf("state=%s completed=%d", decoder.State(), decoder.CompletedBlocks())
+			return
+		}
+		done <- nil
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Z=255 object codec did not terminate")
 	}
 }
 

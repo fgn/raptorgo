@@ -46,7 +46,8 @@ func Example() {
 		panic(err)
 	}
 	const shortenFinal = true
-	for sourceBlock := uint8(0); sourceBlock < oti.SourceBlocks; sourceBlock++ {
+	for sourceBlockIndex := 0; sourceBlockIndex < int(oti.SourceBlocks); sourceBlockIndex++ {
+		sourceBlock := uint8(sourceBlockIndex)
 		k, symbolsErr := raptorgo.SourceBlockSymbols(oti, sourceBlock)
 		if symbolsErr != nil {
 			panic(symbolsErr)

@@ -178,7 +178,8 @@ func NewObjectDecoder(
 		)
 	}
 	blocks := make([]*codec.SourceBlockDecoder, int(oti.SourceBlocks))
-	for sourceBlock := uint8(0); sourceBlock < oti.SourceBlocks; sourceBlock++ {
+	for sourceBlockIndex := 0; sourceBlockIndex < int(oti.SourceBlocks); sourceBlockIndex++ {
+		sourceBlock := uint8(sourceBlockIndex)
 		budget := budgetPlan.blocks[sourceBlock]
 		if budget.k == 0 {
 			continue
@@ -223,7 +224,8 @@ func planObjectDecoderBacking(oti OTI, limits Limits) (objectDecoderBudget, erro
 	}
 	result := objectDecoderBudget{blocks: make([]objectBlockDecoderBudget, int(oti.SourceBlocks))}
 	var maximumAttempt, maximumBlockBytes uint64
-	for sourceBlock := uint8(0); sourceBlock < oti.SourceBlocks; sourceBlock++ {
+	for sourceBlockIndex := 0; sourceBlockIndex < int(oti.SourceBlocks); sourceBlockIndex++ {
+		sourceBlock := uint8(sourceBlockIndex)
 		k, err := SourceBlockSymbols(oti, sourceBlock)
 		if err != nil {
 			return objectDecoderBudget{}, err
@@ -434,7 +436,8 @@ func (decoder *ObjectDecoder) reconstructLocked() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	for sourceBlock := uint8(0); sourceBlock < decoder.oti.SourceBlocks; sourceBlock++ {
+	for sourceBlockIndex := 0; sourceBlockIndex < int(decoder.oti.SourceBlocks); sourceBlockIndex++ {
+		sourceBlock := uint8(sourceBlockIndex)
 		block := decoder.blocks[sourceBlock]
 		if block == nil {
 			continue

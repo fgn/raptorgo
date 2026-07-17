@@ -159,7 +159,8 @@ func encodeAllSourceGrouped(arguments []string) error {
 		return err
 	}
 	var packets [][]byte
-	for sourceBlock := uint8(0); sourceBlock < oti.SourceBlocks; sourceBlock++ {
+	for sourceBlockIndex := 0; sourceBlockIndex < int(oti.SourceBlocks); sourceBlockIndex++ {
+		sourceBlock := uint8(sourceBlockIndex)
 		k, symbolsErr := raptorgo.SourceBlockSymbols(oti, sourceBlock)
 		if symbolsErr != nil {
 			return symbolsErr
@@ -194,7 +195,8 @@ func encodeLossRepairGrouped(arguments []string) error {
 		return err
 	}
 	var packets [][]byte
-	for sourceBlock := uint8(0); sourceBlock < oti.SourceBlocks; sourceBlock++ {
+	for sourceBlockIndex := 0; sourceBlockIndex < int(oti.SourceBlocks); sourceBlockIndex++ {
+		sourceBlock := uint8(sourceBlockIndex)
 		k, symbolsErr := raptorgo.SourceBlockSymbols(oti, sourceBlock)
 		if symbolsErr != nil {
 			return symbolsErr
@@ -284,7 +286,8 @@ func encodeAllSource(arguments []string) error {
 		return err
 	}
 	var packets [][]byte
-	for sourceBlock := uint8(0); sourceBlock < oti.SourceBlocks; sourceBlock++ {
+	for sourceBlockIndex := 0; sourceBlockIndex < int(oti.SourceBlocks); sourceBlockIndex++ {
+		sourceBlock := uint8(sourceBlockIndex)
 		k, symbolsErr := raptorgo.SourceBlockSymbols(oti, sourceBlock)
 		if symbolsErr != nil {
 			return symbolsErr

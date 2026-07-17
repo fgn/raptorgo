@@ -104,7 +104,8 @@ func main() {
 	lose := func() bool { return rng.Float64()*100 < *loss }
 	var sourceSent, sourceLost, repairSent, repairLost, totalSymbols uint64
 	const shortenFinal = true
-	for sbn := uint8(0); sbn < receivedOTI.SourceBlocks; sbn++ {
+	for sourceBlockIndex := 0; sourceBlockIndex < int(receivedOTI.SourceBlocks); sourceBlockIndex++ {
+		sbn := uint8(sourceBlockIndex)
 		k, symbolsErr := raptorgo.SourceBlockSymbols(receivedOTI, sbn)
 		if symbolsErr != nil {
 			log.Fatal(symbolsErr)

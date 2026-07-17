@@ -71,7 +71,8 @@ func executeFinalization(scenario string) traceCorpus {
 	encoder, err := raptorgo.NewObjectEncoder(want, oti, raptorgo.DefaultLimits())
 	must(err)
 	var packets [][]byte
-	for sourceBlock := uint8(0); sourceBlock < oti.SourceBlocks; sourceBlock++ {
+	for sourceBlockIndex := 0; sourceBlockIndex < int(oti.SourceBlocks); sourceBlockIndex++ {
+		sourceBlock := uint8(sourceBlockIndex)
 		k, symbolsErr := raptorgo.SourceBlockSymbols(oti, sourceBlock)
 		must(symbolsErr)
 		if k != 2 {

@@ -31,7 +31,8 @@ func ObjectEncoderWorkspaceBackingBytes(oti OTI, limits Limits) (uint64, error) 
 	}
 	peak := oti.TransferLength
 	workspaceByK := make(map[uint32]uint64, 2)
-	for sourceBlock := uint8(0); sourceBlock < oti.SourceBlocks; sourceBlock++ {
+	for sourceBlockIndex := 0; sourceBlockIndex < int(oti.SourceBlocks); sourceBlockIndex++ {
+		sourceBlock := uint8(sourceBlockIndex)
 		k, err := SourceBlockSymbols(oti, sourceBlock)
 		if err != nil {
 			return 0, err
