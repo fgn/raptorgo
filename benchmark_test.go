@@ -40,7 +40,9 @@ func BenchmarkObjectEncoderPacket(b *testing.B) {
 			validateBenchmarkSourcePacket(b, packet, object, oti, 0, firstESI, 1)
 			b.ReportAllocs()
 			b.SetBytes(int64(test.symbolSize))
+			lastESI := firstESI
 			for b.Loop() {
+				lastESI = firstESI
 				benchmarkPacketSink, err = encoder.Packet(0, firstESI, 1, false)
 				if err != nil {
 					b.Fatal(err)
@@ -50,6 +52,32 @@ func BenchmarkObjectEncoderPacket(b *testing.B) {
 					firstESI = 0
 				}
 			}
+			validateBenchmarkSourcePacket(b, benchmarkPacketSink, object, oti, 0, lastESI, 1)
+		})
+		b.Run("systematic-after-repair/"+name, func(b *testing.B) {
+			encoder, err := NewObjectEncoder(object, oti, DefaultLimits())
+			if err != nil {
+				b.Fatal(err)
+			}
+			if _, err := encoder.Packet(0, test.k, 1, false); err != nil {
+				b.Fatal(err)
+			}
+			firstESI := test.k / 2
+			b.ReportAllocs()
+			b.SetBytes(int64(test.symbolSize))
+			lastESI := firstESI
+			for b.Loop() {
+				lastESI = firstESI
+				benchmarkPacketSink, err = encoder.Packet(0, firstESI, 1, false)
+				if err != nil {
+					b.Fatal(err)
+				}
+				firstESI++
+				if firstESI == test.k {
+					firstESI = 0
+				}
+			}
+			validateBenchmarkSourcePacket(b, benchmarkPacketSink, object, oti, 0, lastESI, 1)
 		})
 		b.Run("repair-cached/"+name, func(b *testing.B) {
 			encoder, err := NewObjectEncoder(object, oti, DefaultLimits())
@@ -81,6 +109,21 @@ func BenchmarkObjectEncoderPacket(b *testing.B) {
 					b.Fatal(err)
 				}
 			}
+		})
+		b.Run("construct-and-systematic/"+name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(oti.TransferLength))
+			for b.Loop() {
+				fresh, err := NewObjectEncoder(object, oti, DefaultLimits())
+				if err != nil {
+					b.Fatal(err)
+				}
+				benchmarkPacketSink, err = fresh.Packet(0, test.k/2, 1, false)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+			validateBenchmarkSourcePacket(b, benchmarkPacketSink, object, oti, 0, test.k/2, 1)
 		})
 	}
 }
@@ -140,7 +183,9 @@ func BenchmarkObjectEncoderSystematicLayouts(b *testing.B) {
 			if err != nil {
 				b.Fatal(err)
 			}
+			lastESI := firstESI
 			for b.Loop() {
+				lastESI = firstESI
 				benchmarkPacketSink, err = encoder.Packet(test.sourceBlock, firstESI, test.count, test.shorten)
 				if err != nil {
 					b.Fatal(err)
@@ -152,6 +197,9 @@ func BenchmarkObjectEncoderSystematicLayouts(b *testing.B) {
 					}
 				}
 			}
+			validateBenchmarkSourcePacket(
+				b, benchmarkPacketSink, object, test.oti, test.sourceBlock, lastESI, test.count,
+			)
 		})
 	}
 }
