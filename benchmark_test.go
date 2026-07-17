@@ -65,6 +65,62 @@ func BenchmarkObjectEncoderPacket(b *testing.B) {
 	}
 }
 
+func BenchmarkObjectEncoderSystematicLayouts(b *testing.B) {
+	const (
+		k          = uint32(10_000)
+		symbolSize = uint32(1_280)
+	)
+	singleBlock := benchmarkOTI(k, symbolSize)
+	subBlocked := singleBlock
+	subBlocked.SubBlocks = 4
+	subBlocked.SymbolAlignment = 4
+	shortened := subBlocked
+	shortened.TransferLength -= 13
+	multiBlock := subBlocked
+	multiBlock.TransferLength *= 2
+	multiBlock.SourceBlocks = 2
+
+	for _, test := range []struct {
+		name                      string
+		oti                       OTI
+		sourceBlock               uint8
+		firstESI, count           uint32
+		shorten, requireShortened bool
+	}{
+		{name: "single/N=1", oti: singleBlock, firstESI: k / 2, count: 1},
+		{name: "grouped=16/N=1", oti: singleBlock, firstESI: k / 2, count: 16},
+		{name: "single/N=4", oti: subBlocked, firstESI: k / 2, count: 1},
+		{name: "grouped=16/N=4", oti: subBlocked, firstESI: k / 2, count: 16},
+		{name: "shortened-final/N=4", oti: shortened, firstESI: k - 1, count: 1, shorten: true, requireShortened: true},
+		{name: "single/Z=2/N=4/SBN=1", oti: multiBlock, sourceBlock: 1, firstESI: k / 2, count: 1},
+	} {
+		test := test
+		b.Run(test.name, func(b *testing.B) {
+			object := benchmarkObject(test.oti.TransferLength)
+			encoder, err := NewObjectEncoder(object, test.oti, DefaultLimits())
+			if err != nil {
+				b.Fatal(err)
+			}
+			packet, err := encoder.Packet(test.sourceBlock, test.firstESI, test.count, test.shorten)
+			if err != nil {
+				b.Fatal(err)
+			}
+			fullBytes := PayloadIDEncodedSize + int(test.count)*int(test.oti.SymbolSize)
+			if test.requireShortened && len(packet) >= fullBytes {
+				b.Fatalf("shortened packet has %d bytes, full packet has %d", len(packet), fullBytes)
+			}
+			b.ReportAllocs()
+			b.SetBytes(int64(len(packet) - PayloadIDEncodedSize))
+			b.ReportMetric(float64(test.count), "symbols/op")
+			for b.Loop() {
+				if _, err := encoder.Packet(test.sourceBlock, test.firstESI, test.count, test.shorten); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkObjectDecoder(b *testing.B) {
 	for _, test := range []struct {
 		k, symbolSize, loss, overhead uint32
