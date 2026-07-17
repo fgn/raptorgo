@@ -1,10 +1,13 @@
 package raptorgo
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"testing"
 )
+
+var benchmarkPacketSink []byte
 
 func BenchmarkObjectEncoderPacket(b *testing.B) {
 	for _, test := range []struct {
@@ -24,27 +27,43 @@ func BenchmarkObjectEncoderPacket(b *testing.B) {
 		name := fmt.Sprintf("K=%d/T=%d", test.k, test.symbolSize)
 		oti := benchmarkOTI(test.k, test.symbolSize)
 		object := benchmarkObject(oti.TransferLength)
-		encoder, err := NewObjectEncoder(object, oti, DefaultLimits())
-		if err != nil {
-			b.Fatal(err)
-		}
-		if _, err := encoder.Packet(0, test.k, 1, false); err != nil {
-			b.Fatal(err)
-		}
 		b.Run("systematic/"+name, func(b *testing.B) {
+			encoder, err := NewObjectEncoder(object, oti, DefaultLimits())
+			if err != nil {
+				b.Fatal(err)
+			}
+			firstESI := test.k / 2
+			packet, err := encoder.Packet(0, firstESI, 1, false)
+			if err != nil {
+				b.Fatal(err)
+			}
+			validateBenchmarkSourcePacket(b, packet, object, oti, 0, firstESI, 1)
 			b.ReportAllocs()
 			b.SetBytes(int64(test.symbolSize))
 			for b.Loop() {
-				if _, err := encoder.Packet(0, test.k/2, 1, false); err != nil {
+				benchmarkPacketSink, err = encoder.Packet(0, firstESI, 1, false)
+				if err != nil {
 					b.Fatal(err)
+				}
+				firstESI++
+				if firstESI == test.k {
+					firstESI = 0
 				}
 			}
 		})
 		b.Run("repair-cached/"+name, func(b *testing.B) {
+			encoder, err := NewObjectEncoder(object, oti, DefaultLimits())
+			if err != nil {
+				b.Fatal(err)
+			}
+			if _, err := encoder.Packet(0, test.k, 1, false); err != nil {
+				b.Fatal(err)
+			}
 			b.ReportAllocs()
 			b.SetBytes(int64(test.symbolSize))
 			for b.Loop() {
-				if _, err := encoder.Packet(0, test.k+17, 1, false); err != nil {
+				benchmarkPacketSink, err = encoder.Packet(0, test.k+17, 1, false)
+				if err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -57,7 +76,8 @@ func BenchmarkObjectEncoderPacket(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
-				if _, err := fresh.Packet(0, test.k, 1, false); err != nil {
+				benchmarkPacketSink, err = fresh.Packet(0, test.k, 1, false)
+				if err != nil {
 					b.Fatal(err)
 				}
 			}
@@ -109,15 +129,65 @@ func BenchmarkObjectEncoderSystematicLayouts(b *testing.B) {
 			if test.requireShortened && len(packet) >= fullBytes {
 				b.Fatalf("shortened packet has %d bytes, full packet has %d", len(packet), fullBytes)
 			}
+			validateBenchmarkSourcePacket(
+				b, packet, object, test.oti, test.sourceBlock, test.firstESI, test.count,
+			)
 			b.ReportAllocs()
 			b.SetBytes(int64(len(packet) - PayloadIDEncodedSize))
 			b.ReportMetric(float64(test.count), "symbols/op")
+			firstESI := test.firstESI
+			k, err := SourceBlockSymbols(test.oti, test.sourceBlock)
+			if err != nil {
+				b.Fatal(err)
+			}
 			for b.Loop() {
-				if _, err := encoder.Packet(test.sourceBlock, test.firstESI, test.count, test.shorten); err != nil {
+				benchmarkPacketSink, err = encoder.Packet(test.sourceBlock, firstESI, test.count, test.shorten)
+				if err != nil {
 					b.Fatal(err)
+				}
+				if !test.shorten {
+					firstESI++
+					if uint64(firstESI)+uint64(test.count) > uint64(k) {
+						firstESI = 0
+					}
 				}
 			}
 		})
+	}
+}
+
+func validateBenchmarkSourcePacket(
+	b testing.TB,
+	packet, object []byte,
+	oti OTI,
+	sourceBlock uint8,
+	firstESI, count uint32,
+) {
+	b.Helper()
+	view, err := ParseEncodingPacket(packet, oti, DefaultLimits())
+	if err != nil {
+		b.Fatal(err)
+	}
+	if view.PayloadID() != (PayloadID{SourceBlockNumber: sourceBlock, EncodingSymbolID: firstESI}) ||
+		!view.IsSource() || view.SymbolCount() != count {
+		b.Fatalf("unexpected benchmark packet metadata: %+v", view)
+	}
+	block, err := BuildSourceBlock(object, oti, sourceBlock, DefaultLimits())
+	if err != nil {
+		b.Fatal(err)
+	}
+	canonical := make([]byte, oti.SymbolSize)
+	for index := uint32(0); index < count; index++ {
+		if err := view.CopySymbol(index, canonical); err != nil {
+			b.Fatal(err)
+		}
+		want, err := block.Symbol(firstESI + index)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if !bytes.Equal(canonical, want) {
+			b.Fatalf("source symbol %d differs: got %x, want %x", firstESI+index, canonical, want)
+		}
 	}
 }
 
