@@ -540,6 +540,42 @@ func TestObjectEncoderDropsRepairCacheBeforeFailedReplacement(t *testing.T) {
 	}
 }
 
+func TestObjectEncoderShortPacketIntoPreservesOtherRepairCache(t *testing.T) {
+	oti := OTI{TransferLength: 80, SymbolSize: 4, SourceBlocks: 2, SubBlocks: 1, SymbolAlignment: 1}
+	encoder, err := NewObjectEncoder(patternedObject(oti.TransferLength), oti, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstK, err := SourceBlockSymbols(oti, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := encoder.Packet(0, firstK, 1, false); err != nil {
+		t.Fatalf("prime first repair cache: %v", err)
+	}
+	wantCache, wantBlock := encoder.cache, encoder.cacheBlock
+	wantBytes := encoder.cacheBytes
+	secondK, err := SourceBlockSymbols(oti, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	destination := bytes.Repeat([]byte{0xa5}, PayloadIDEncodedSize+int(oti.SymbolSize)-1)
+	before := append([]byte(nil), destination...)
+	if packet, err := encoder.PacketInto(destination, 1, secondK, 1, false); !errors.Is(err, ErrInvalidPacket) || packet != nil {
+		t.Fatalf("short cold-repair destination packet=%x error=%v", packet, err)
+	}
+	if !bytes.Equal(destination, before) {
+		t.Fatalf("short cold-repair destination changed: %x, want %x", destination, before)
+	}
+	if !encoder.cacheValid || encoder.cache != wantCache ||
+		encoder.cacheBlock != wantBlock || encoder.cacheBytes != wantBytes {
+		t.Fatalf(
+			"short cold-repair call changed cache: valid=%v encoder=%p block=%d bytes=%d",
+			encoder.cacheValid, encoder.cache, encoder.cacheBlock, encoder.cacheBytes,
+		)
+	}
+}
+
 func TestSubBlockedSourcePacketRejectsContiguousLayout(t *testing.T) {
 	oti := OTI{TransferLength: 8, SymbolSize: 4, SourceBlocks: 1, SubBlocks: 1, SymbolAlignment: 1}
 	encoder, err := NewObjectEncoder(patternedObject(oti.TransferLength), oti, DefaultLimits())

@@ -198,6 +198,12 @@ func (encoder *ObjectEncoder) packetLocked(
 	if packetBytes > encoder.limits.MaxPacketBytes || packetBytes > uint64(maxInt()) {
 		return nil, fmt.Errorf("%w: packet requires %d bytes", ErrLimitExceeded, packetBytes)
 	}
+	if destination != nil && uint64(len(destination)) < packetBytes {
+		return nil, fmt.Errorf(
+			"%w: packet destination has %d bytes, need %d",
+			ErrInvalidPacket, len(destination), packetBytes,
+		)
+	}
 
 	if isSource {
 		if peakErr := checkSourcePacketPeak(
@@ -205,10 +211,7 @@ func (encoder *ObjectEncoder) packetLocked(
 		); peakErr != nil {
 			return nil, peakErr
 		}
-		packet, bufferErr := packetBuffer(destination, packetBytes)
-		if bufferErr != nil {
-			return nil, bufferErr
-		}
+		packet := packetBuffer(destination, packetBytes)
 		if encoder.oti.SubBlocks == 1 {
 			return encoder.buildContiguousSourcePacket(
 				packet, sourceBlockNumber, firstESI,
@@ -237,26 +240,17 @@ func (encoder *ObjectEncoder) packetLocked(
 	if err != nil {
 		return nil, err
 	}
-	packet, err := packetBuffer(destination, packetBytes)
-	if err != nil {
-		return nil, err
-	}
+	packet := packetBuffer(destination, packetBytes)
 	return encoder.buildRepairPacket(packet, blockEncoder, sourceBlockNumber, firstESI, symbolCount)
 }
 
-func packetBuffer(destination []byte, packetBytes uint64) ([]byte, error) {
+func packetBuffer(destination []byte, packetBytes uint64) []byte {
 	if destination == nil {
-		return make([]byte, int(packetBytes)), nil
-	}
-	if uint64(len(destination)) < packetBytes {
-		return nil, fmt.Errorf(
-			"%w: packet destination has %d bytes, need %d",
-			ErrInvalidPacket, len(destination), packetBytes,
-		)
+		return make([]byte, int(packetBytes))
 	}
 	packet := destination[:int(packetBytes)]
 	clear(packet)
-	return packet, nil
+	return packet
 }
 
 func checkSourcePacketPeak(objectBytes, blockBytes, packetBytes, maximum uint64) error {
