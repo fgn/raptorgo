@@ -125,12 +125,37 @@ func (encoder *ObjectEncoder) Packet(
 		return nil, fmt.Errorf("%w: nil encoder", ErrObjectEncoder)
 	}
 	encoder.mu.Lock()
-	packet, err := encoder.packetLocked(sourceBlockNumber, firstESI, symbolCount, shortenFinal)
+	packet, err := encoder.packetLocked(nil, sourceBlockNumber, firstESI, symbolCount, shortenFinal)
+	encoder.mu.Unlock()
+	return packet, err
+}
+
+// PacketInto writes the same canonical packet as Packet into destination and
+// returns its exact-length view. Destination must have room for the four-byte
+// payload ID and the requested symbols; passing a full-sized buffer is valid
+// when shortenFinal may produce a shorter result. The returned bytes alias
+// destination, whose unused tail is left unchanged. A source-packet call does
+// not allocate when destination is large enough.
+func (encoder *ObjectEncoder) PacketInto(
+	destination []byte,
+	sourceBlockNumber uint8,
+	firstESI, symbolCount uint32,
+	shortenFinal bool,
+) ([]byte, error) {
+	if encoder == nil {
+		return nil, fmt.Errorf("%w: nil encoder", ErrObjectEncoder)
+	}
+	if destination == nil {
+		return nil, fmt.Errorf("%w: nil packet destination", ErrInvalidPacket)
+	}
+	encoder.mu.Lock()
+	packet, err := encoder.packetLocked(destination, sourceBlockNumber, firstESI, symbolCount, shortenFinal)
 	encoder.mu.Unlock()
 	return packet, err
 }
 
 func (encoder *ObjectEncoder) packetLocked(
+	destination []byte,
 	sourceBlockNumber uint8,
 	firstESI, symbolCount uint32,
 	shortenFinal bool,
@@ -180,13 +205,17 @@ func (encoder *ObjectEncoder) packetLocked(
 		); peakErr != nil {
 			return nil, peakErr
 		}
+		packet, bufferErr := packetBuffer(destination, packetBytes)
+		if bufferErr != nil {
+			return nil, bufferErr
+		}
 		if encoder.oti.SubBlocks == 1 {
 			return encoder.buildContiguousSourcePacket(
-				sourceBlockNumber, firstESI, packetBytes,
+				packet, sourceBlockNumber, firstESI,
 			)
 		}
 		return encoder.buildSubBlockedSourcePacket(
-			sourceBlockNumber, k, firstESI, symbolCount, packetBytes,
+			packet, sourceBlockNumber, k, firstESI, symbolCount,
 		)
 	}
 
@@ -208,7 +237,26 @@ func (encoder *ObjectEncoder) packetLocked(
 	if err != nil {
 		return nil, err
 	}
-	return encoder.buildRepairPacket(blockEncoder, sourceBlockNumber, firstESI, symbolCount, packetBytes)
+	packet, err := packetBuffer(destination, packetBytes)
+	if err != nil {
+		return nil, err
+	}
+	return encoder.buildRepairPacket(packet, blockEncoder, sourceBlockNumber, firstESI, symbolCount)
+}
+
+func packetBuffer(destination []byte, packetBytes uint64) ([]byte, error) {
+	if destination == nil {
+		return make([]byte, int(packetBytes)), nil
+	}
+	if uint64(len(destination)) < packetBytes {
+		return nil, fmt.Errorf(
+			"%w: packet destination has %d bytes, need %d",
+			ErrInvalidPacket, len(destination), packetBytes,
+		)
+	}
+	packet := destination[:int(packetBytes)]
+	clear(packet)
+	return packet, nil
 }
 
 func checkSourcePacketPeak(objectBytes, blockBytes, packetBytes, maximum uint64) error {
@@ -226,11 +274,10 @@ func checkSourcePacketPeak(objectBytes, blockBytes, packetBytes, maximum uint64)
 }
 
 func (encoder *ObjectEncoder) buildContiguousSourcePacket(
+	packet []byte,
 	sourceBlockNumber uint8,
 	firstESI uint32,
-	packetBytes uint64,
 ) ([]byte, error) {
-	packet := make([]byte, int(packetBytes))
 	writePayloadID(packet, sourceBlockNumber, firstESI)
 
 	firstSymbol := sourceBlockFirstSymbol(encoder.blockPartition, uint64(sourceBlockNumber))
@@ -240,14 +287,13 @@ func (encoder *ObjectEncoder) buildContiguousSourcePacket(
 }
 
 func (encoder *ObjectEncoder) buildSubBlockedSourcePacket(
+	packet []byte,
 	sourceBlockNumber uint8,
 	k, firstESI, symbolCount uint32,
-	packetBytes uint64,
 ) ([]byte, error) {
 	if encoder.oti.SubBlocks < 2 {
 		return nil, fmt.Errorf("%w: sub-blocked packet path requires N >= 2", ErrObjectEncoder)
 	}
-	packet := make([]byte, int(packetBytes))
 	writePayloadID(packet, sourceBlockNumber, firstESI)
 	payload := packet[PayloadIDEncodedSize:]
 
@@ -275,12 +321,11 @@ func (encoder *ObjectEncoder) buildSubBlockedSourcePacket(
 }
 
 func (encoder *ObjectEncoder) buildRepairPacket(
+	packet []byte,
 	blockEncoder *codec.SourceBlockEncoder,
 	sourceBlockNumber uint8,
 	firstESI, symbolCount uint32,
-	packetBytes uint64,
 ) ([]byte, error) {
-	packet := make([]byte, int(packetBytes))
 	writePayloadID(packet, sourceBlockNumber, firstESI)
 	offset := PayloadIDEncodedSize
 	for index := uint32(0); index < symbolCount; index++ {

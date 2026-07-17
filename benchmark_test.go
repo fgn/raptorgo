@@ -204,6 +204,47 @@ func BenchmarkObjectEncoderSystematicLayouts(b *testing.B) {
 	}
 }
 
+func BenchmarkObjectEncoderSystematicInto(b *testing.B) {
+	const (
+		k          = uint32(10_000)
+		symbolSize = uint32(1_280)
+	)
+	for _, subBlocks := range []uint16{1, 4} {
+		oti := benchmarkOTI(k, symbolSize)
+		oti.SubBlocks = subBlocks
+		oti.SymbolAlignment = 4
+		b.Run(fmt.Sprintf("N=%d", subBlocks), func(b *testing.B) {
+			object := benchmarkObject(oti.TransferLength)
+			encoder, err := NewObjectEncoder(object, oti, DefaultLimits())
+			if err != nil {
+				b.Fatal(err)
+			}
+			destination := make([]byte, PayloadIDEncodedSize+int(oti.SymbolSize))
+			packet, err := encoder.PacketInto(destination, 0, k/2, 1, false)
+			if err != nil {
+				b.Fatal(err)
+			}
+			validateBenchmarkSourcePacket(b, packet, object, oti, 0, k/2, 1)
+			b.ReportAllocs()
+			b.SetBytes(int64(oti.SymbolSize))
+			firstESI := k / 2
+			lastESI := firstESI
+			for b.Loop() {
+				lastESI = firstESI
+				benchmarkPacketSink, err = encoder.PacketInto(destination, 0, firstESI, 1, false)
+				if err != nil {
+					b.Fatal(err)
+				}
+				firstESI++
+				if firstESI == k {
+					firstESI = 0
+				}
+			}
+			validateBenchmarkSourcePacket(b, benchmarkPacketSink, object, oti, 0, lastESI, 1)
+		})
+	}
+}
+
 func validateBenchmarkSourcePacket(
 	b testing.TB,
 	packet, object []byte,

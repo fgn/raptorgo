@@ -380,6 +380,109 @@ func TestObjectEncoderSubBlockedSystematicPacketAllocations(t *testing.T) {
 	}
 }
 
+func TestObjectEncoderPacketIntoMatchesOwnedPackets(t *testing.T) {
+	tests := []struct {
+		name         string
+		oti          OTI
+		sourceBlock  uint8
+		first, count uint32
+		shorten      bool
+	}{
+		{
+			name:  "contiguous shortened group",
+			oti:   OTI{TransferLength: 10, SymbolSize: 4, SourceBlocks: 1, SubBlocks: 1, SymbolAlignment: 1},
+			first: 1, count: 2, shorten: true,
+		},
+		{
+			name:  "sub-blocked shortened group",
+			oti:   OTI{TransferLength: 13, SymbolSize: 5, SourceBlocks: 1, SubBlocks: 3, SymbolAlignment: 1},
+			first: 0, count: 3, shorten: true,
+		},
+		{
+			name:        "second source block",
+			oti:         OTI{TransferLength: 29, SymbolSize: 6, SourceBlocks: 2, SubBlocks: 4, SymbolAlignment: 1},
+			sourceBlock: 1, first: 1, count: 1,
+		},
+		{
+			name:  "cached repair",
+			oti:   OTI{TransferLength: 12, SymbolSize: 4, SourceBlocks: 1, SubBlocks: 1, SymbolAlignment: 1},
+			first: 3, count: 2,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			encoder, err := NewObjectEncoder(patternedObject(test.oti.TransferLength), test.oti, DefaultLimits())
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := encoder.Packet(test.sourceBlock, test.first, test.count, test.shorten)
+			if err != nil {
+				t.Fatal(err)
+			}
+			destination := bytes.Repeat([]byte{0xa5}, len(want)+7)
+			got, err := encoder.PacketInto(destination, test.sourceBlock, test.first, test.count, test.shorten)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, want) {
+				t.Fatalf("PacketInto=%x, want %x", got, want)
+			}
+			if len(got) == 0 || &got[0] != &destination[0] {
+				t.Fatal("PacketInto result does not alias destination")
+			}
+			if !bytes.Equal(destination[len(got):], bytes.Repeat([]byte{0xa5}, 7)) {
+				t.Fatalf("destination tail changed: %x", destination[len(got):])
+			}
+
+			short := bytes.Repeat([]byte{0x5a}, len(want)-1)
+			before := append([]byte(nil), short...)
+			if packet, err := encoder.PacketInto(short, test.sourceBlock, test.first, test.count, test.shorten); !errors.Is(err, ErrInvalidPacket) || packet != nil {
+				t.Fatalf("short destination packet=%x error=%v", packet, err)
+			}
+			if !bytes.Equal(short, before) {
+				t.Fatalf("short destination changed: %x, want %x", short, before)
+			}
+		})
+	}
+
+	var nilEncoder *ObjectEncoder
+	if packet, err := nilEncoder.PacketInto(make([]byte, 8), 0, 0, 1, false); !errors.Is(err, ErrObjectEncoder) || packet != nil {
+		t.Fatalf("nil encoder PacketInto packet=%x error=%v", packet, err)
+	}
+	oti := OTI{TransferLength: 4, SymbolSize: 4, SourceBlocks: 1, SubBlocks: 1, SymbolAlignment: 1}
+	encoder, err := NewObjectEncoder(patternedObject(oti.TransferLength), oti, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if packet, err := encoder.PacketInto(nil, 0, 0, 1, false); !errors.Is(err, ErrInvalidPacket) || packet != nil {
+		t.Fatalf("nil destination packet=%x error=%v", packet, err)
+	}
+}
+
+func TestObjectEncoderSystematicPacketIntoAllocations(t *testing.T) {
+	for _, subBlocks := range []uint16{1, 4} {
+		oti := OTI{
+			TransferLength: 128_000, SymbolSize: 1_280,
+			SourceBlocks: 1, SubBlocks: subBlocks, SymbolAlignment: 1,
+		}
+		encoder, err := NewObjectEncoder(patternedObject(oti.TransferLength), oti, DefaultLimits())
+		if err != nil {
+			t.Fatal(err)
+		}
+		destination := make([]byte, PayloadIDEncodedSize+int(oti.SymbolSize))
+		allocations := testing.AllocsPerRun(100, func() {
+			var packetErr error
+			packetAllocationSink, packetErr = encoder.PacketInto(destination, 0, 50, 1, false)
+			if packetErr != nil {
+				panic(packetErr)
+			}
+		})
+		if allocations != 0 {
+			t.Fatalf("N=%d systematic PacketInto allocations = %.1f, want zero", subBlocks, allocations)
+		}
+	}
+}
+
 func TestObjectEncoderSourcePacketPeakIncludesRepairCache(t *testing.T) {
 	oti := OTI{TransferLength: 40, SymbolSize: 4, SourceBlocks: 1, SubBlocks: 1, SymbolAlignment: 1}
 	encoder, err := NewObjectEncoder(patternedObject(oti.TransferLength), oti, DefaultLimits())
@@ -443,7 +546,7 @@ func TestSubBlockedSourcePacketRejectsContiguousLayout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	packet, err := encoder.buildSubBlockedSourcePacket(0, 2, 0, 1, PayloadIDEncodedSize+4)
+	packet, err := encoder.buildSubBlockedSourcePacket(make([]byte, PayloadIDEncodedSize+4), 0, 2, 0, 1)
 	if !errors.Is(err, ErrObjectEncoder) || packet != nil {
 		t.Fatalf("sub-blocked path with N=1 returned packet=%x error=%v", packet, err)
 	}
