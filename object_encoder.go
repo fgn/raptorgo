@@ -125,7 +125,16 @@ func (encoder *ObjectEncoder) Packet(
 		return nil, fmt.Errorf("%w: nil encoder", ErrObjectEncoder)
 	}
 	encoder.mu.Lock()
-	defer encoder.mu.Unlock()
+	packet, err := encoder.packetLocked(sourceBlockNumber, firstESI, symbolCount, shortenFinal)
+	encoder.mu.Unlock()
+	return packet, err
+}
+
+func (encoder *ObjectEncoder) packetLocked(
+	sourceBlockNumber uint8,
+	firstESI, symbolCount uint32,
+	shortenFinal bool,
+) ([]byte, error) {
 	if sourceBlockNumber >= encoder.oti.SourceBlocks || symbolCount == 0 ||
 		symbolCount > encoder.limits.MaxSymbolsPerPacket || firstESI > MaxEncodingSymbolID ||
 		uint64(firstESI)+uint64(symbolCount)-1 > uint64(MaxEncodingSymbolID) {
