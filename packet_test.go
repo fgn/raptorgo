@@ -6,6 +6,8 @@ import (
 	"testing"
 )
 
+var packetAllocationSink []byte
+
 func packetBytes(t *testing.T, id PayloadID, payload []byte) []byte {
 	t.Helper()
 	header, err := id.MarshalBinary()
@@ -328,6 +330,45 @@ func TestObjectEncoderPacketLimitsAtExactBoundaries(t *testing.T) {
 	}
 	if packet, err := encoder.Packet(0, 0, 2, false); !errors.Is(err, ErrLimitExceeded) || packet != nil {
 		t.Fatalf("over-byte packet=%x error=%v", packet, err)
+	}
+}
+
+func TestObjectEncoderContiguousSystematicPacketAllocations(t *testing.T) {
+	oti := OTI{TransferLength: 128_000, SymbolSize: 1_280, SourceBlocks: 1, SubBlocks: 1, SymbolAlignment: 1}
+	encoder, err := NewObjectEncoder(patternedObject(oti.TransferLength), oti, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocations := testing.AllocsPerRun(100, func() {
+		var packetErr error
+		packetAllocationSink, packetErr = encoder.Packet(0, 50, 1, false)
+		if packetErr != nil {
+			panic(packetErr)
+		}
+	})
+	if allocations > 2 {
+		t.Fatalf("contiguous systematic packet allocations = %.1f, want at most 2", allocations)
+	}
+	required := uint64(len(encoder.object)) + PayloadIDEncodedSize + uint64(oti.SymbolSize)
+	encoder.limits.MaxWorkingMemory = required
+	if packet, err := encoder.Packet(0, 50, 1, false); err != nil || len(packet) != PayloadIDEncodedSize+int(oti.SymbolSize) {
+		t.Fatalf("exact source-packet peak returned %d bytes, %v", len(packet), err)
+	}
+	encoder.limits.MaxWorkingMemory = required - 1
+	if packet, err := encoder.Packet(0, 50, 1, false); !errors.Is(err, ErrLimitExceeded) || packet != nil {
+		t.Fatalf("over-limit source packet=%x error=%v", packet, err)
+	}
+}
+
+func TestCheckSourcePacketPeakBoundaries(t *testing.T) {
+	if err := checkSourcePacketPeak(8, 0, 8, 16); err != nil {
+		t.Fatalf("exact peak rejected: %v", err)
+	}
+	if err := checkSourcePacketPeak(8, 0, 8, 15); !errors.Is(err, ErrLimitExceeded) {
+		t.Fatalf("over-limit peak returned %v", err)
+	}
+	if err := checkSourcePacketPeak(^uint64(0), 1, 0, ^uint64(0)); !errors.Is(err, ErrLimitExceeded) {
+		t.Fatalf("overflowing peak returned %v", err)
 	}
 }
 

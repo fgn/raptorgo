@@ -7,6 +7,7 @@ import (
 
 	"github.com/fgn/raptorgo/internal/codec"
 	"github.com/fgn/raptorgo/internal/gf256"
+	"github.com/fgn/raptorgo/internal/rfc6330"
 )
 
 // ObjectEncoder owns a source object and emits canonical grouped RFC 6330
@@ -150,6 +151,16 @@ func (encoder *ObjectEncoder) Packet(
 	}
 
 	if isSource {
+		if encoder.oti.SubBlocks == 1 {
+			if peakErr := checkSourcePacketPeak(
+				uint64(len(encoder.object)), 0, packetBytes, encoder.limits.MaxWorkingMemory,
+			); peakErr != nil {
+				return nil, peakErr
+			}
+			return encoder.buildContiguousSourcePacket(
+				sourceBlockNumber, firstESI, packetBytes,
+			)
+		}
 		blockBytes := uint64(k) * uint64(encoder.oti.SymbolSize)
 		peak, peakErr := checkedObjectBacking(uint64(len(encoder.object)), blockBytes, packetBytes)
 		if peakErr != nil {
@@ -187,6 +198,44 @@ func (encoder *ObjectEncoder) Packet(
 		return nil, err
 	}
 	return encoder.buildRepairPacket(blockEncoder, sourceBlockNumber, firstESI, symbolCount, packetBytes)
+}
+
+func checkSourcePacketPeak(objectBytes, blockBytes, packetBytes, maximum uint64) error {
+	peak, err := checkedObjectBacking(objectBytes, blockBytes, packetBytes)
+	if err != nil {
+		return fmt.Errorf("source packet peak: %w", err)
+	}
+	if peak > maximum {
+		return fmt.Errorf(
+			"%w: source packet peak %d bytes (limit %d)",
+			ErrLimitExceeded, peak, maximum,
+		)
+	}
+	return nil
+}
+
+func (encoder *ObjectEncoder) buildContiguousSourcePacket(
+	sourceBlockNumber uint8,
+	firstESI uint32,
+	packetBytes uint64,
+) ([]byte, error) {
+	id := PayloadID{SourceBlockNumber: sourceBlockNumber, EncodingSymbolID: firstESI}
+	header, err := id.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	packet := make([]byte, int(packetBytes))
+	copy(packet, header)
+
+	totalSymbols := ceilDiv(encoder.oti.TransferLength, uint64(encoder.oti.SymbolSize))
+	blockPartition, err := rfc6330.Partition(totalSymbols, uint64(encoder.oti.SourceBlocks))
+	if err != nil {
+		return nil, err
+	}
+	firstSymbol := sourceBlockFirstSymbol(blockPartition, uint64(sourceBlockNumber))
+	objectOffset := (firstSymbol + uint64(firstESI)) * uint64(encoder.oti.SymbolSize)
+	copyObjectRange(packet[PayloadIDEncodedSize:], encoder.object, objectOffset)
+	return packet, nil
 }
 
 func (encoder *ObjectEncoder) buildSourcePacket(
