@@ -85,3 +85,46 @@ Observed profile evidence:
   used for acceptance comparisons.
 
 No production files were changed for this baseline.
+
+## Hardened pre-optimization baseline: `550acdb`
+
+Before production optimization, adversarial review hardened the measurements:
+
+- systematic and repair subbenchmarks now use independent encoders, so repair
+  setup cannot warm or retain state for the source path;
+- timed calls cycle ESIs, retain their result in a package-level sink, and the
+  final timed result is checked byte-for-byte after the timer stops;
+- a distinct systematic-after-repair workload detects hidden coupling to the
+  repair cache;
+- construct-plus-first-systematic records any work moved into construction or
+  a lazy first call; and
+- N=1/N=4, grouped, shortened, and two-block layouts have dedicated strata.
+
+The direct single/N=1 layout workload was repeated five times with the same
+CPU pin, `GOMAXPROCS`, and 500 ms minimum sample time:
+
+```sh
+taskset -c 4 env GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkObjectEncoderSystematicLayouts$' \
+  -benchmem -benchtime=500ms -count=5 .
+```
+
+| Workload | Median ns/op | Observed range | B/op | allocs/op |
+|---|---:|---:|---:|---:|
+| single/N=1 | 1,939,159 | 1,918,640–2,052,592 | 12,805,511 | 3 |
+| grouped=16/N=1 | 1,949,905 | 1,939,757–1,986,401 | 12,825,863 | 3 |
+| single/N=4 | 3,442,214 | 3,409,731–3,619,563 | 12,805,511 | 3 |
+| grouped=16/N=4 | 3,413,698 | 3,273,778–3,455,286 | 12,825,863 | 3 |
+| shortened-final/N=4 | 3,266,804 | 3,171,199–3,319,318 | 12,805,383 | 3 |
+| single/Z=2/N=4/SBN=1 | 3,184,620 | 3,182,139–3,606,894 | 12,805,508 | 3 |
+
+The final comparison will alternate binaries built from `550acdb` and the
+candidate head on the same CPU. This avoids claiming a ratio from runs made at
+different `schedutil` frequencies or under different sibling-core load. The
+candidate must satisfy both the original absolute threshold of 155,177 ns/op
+and a paired median improvement of at least 13x. Against the hardened
+single/N=1 median, the latter threshold is 149,166 ns/op.
+
+The Z=255 loop-termination correction between the original and hardened
+baselines does not execute in any Z=1 benchmark above and therefore does not
+affect the performance comparison.
