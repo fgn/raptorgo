@@ -10,9 +10,16 @@ func BenchmarkObjectEncoderPacket(b *testing.B) {
 	for _, test := range []struct {
 		k, symbolSize uint32
 	}{
+		// Conformance strata: small symbols across parameter-table seams.
 		{10, 64},
 		{49, 31},
 		{1_025, 7},
+		// Transport strata: a network-realistic 1280-byte symbol across
+		// representative block sizes.
+		{10, 1_280},
+		{100, 1_280},
+		{1_000, 1_280},
+		{10_000, 1_280},
 	} {
 		name := fmt.Sprintf("K=%d/T=%d", test.k, test.symbolSize)
 		oti := benchmarkOTI(test.k, test.symbolSize)
@@ -62,9 +69,16 @@ func BenchmarkObjectDecoder(b *testing.B) {
 	for _, test := range []struct {
 		k, symbolSize, loss, overhead uint32
 	}{
+		// Conformance strata: small symbols across parameter-table seams.
 		{10, 64, 0, 0},
 		{49, 31, 5, 4},
 		{1_025, 7, 7, 8},
+		// Transport strata: 1280-byte symbols with ten percent source loss
+		// repaired from the repair ESI range.
+		{10, 1_280, 1, 0},
+		{100, 1_280, 10, 1},
+		{1_000, 1_280, 100, 2},
+		{10_000, 1_280, 1_000, 4},
 	} {
 		name := fmt.Sprintf("K=%d/T=%d/loss=%d/overhead=%d", test.k, test.symbolSize, test.loss, test.overhead)
 		oti := benchmarkOTI(test.k, test.symbolSize)

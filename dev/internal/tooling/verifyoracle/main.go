@@ -1,5 +1,5 @@
-// Command verifyvendor authenticates the complete vendored raptorq source
-// tree while allowing exactly the reviewed primitive-export shim in lib.rs.
+// Command verifyoracle authenticates an ephemeral raptorq source tree while
+// allowing exactly the reviewed primitive-export shim in lib.rs.
 package main
 
 import (
@@ -16,7 +16,7 @@ const (
 	wantPackageChecksum  = "4d4215fb79ef19442a0c71616aabb0715a386e6a16ed9031775ee3e3f20e7502"
 	wantManifestChecksum = "9a38844ab4ebbb6c5cd9484b6ae25cd5574180549f2827195cb395205a47439a"
 	shimPath             = "src/lib.rs"
-	wantShimChecksum     = "39698ec64aabed6611c2b76c54bcc2e2cbc543aa2f36bd0c027fb6f4ce5d3ef0"
+	wantShimChecksum     = "2588cb47c3bcda375ee374fc5efdd6bf567fc1bd36579e1288458c7c01d3c962"
 )
 
 type cargoChecksum struct {
@@ -24,35 +24,57 @@ type cargoChecksum struct {
 	Package string            `json:"package"`
 }
 
+type verificationPolicy struct {
+	packageChecksum  string
+	manifestChecksum string
+	shimPath         string
+	shimChecksum     string
+}
+
+var oraclePolicy = verificationPolicy{
+	packageChecksum:  wantPackageChecksum,
+	manifestChecksum: wantManifestChecksum,
+	shimPath:         shimPath,
+	shimChecksum:     wantShimChecksum,
+}
+
 func main() {
 	if len(os.Args) != 2 {
-		fatalf("usage: verifyvendor <raptorq-vendor-directory>")
+		fatalf("usage: verifyoracle <raptorq-source-directory>")
 	}
-	root, err := filepath.Abs(os.Args[1])
+	count, err := verifyTree(os.Args[1], oraclePolicy)
 	if err != nil {
-		fatalf("resolve vendor directory: %v", err)
+		fatalf("verify oracle source tree: %v", err)
+	}
+	fmt.Printf("verified ephemeral raptorq 2.0.1 package %s (%d files, reviewed shim applied)\n", wantPackageChecksum, count)
+}
+
+func verifyTree(directory string, policy verificationPolicy) (int, error) {
+	root, err := filepath.Abs(directory)
+	if err != nil {
+		return 0, fmt.Errorf("resolve oracle source directory: %w", err)
 	}
 	manifestPath := filepath.Join(root, ".cargo-checksum.json")
 	manifestInfo, err := os.Lstat(manifestPath)
 	if err != nil {
-		fatalf("inspect checksum manifest: %v", err)
+		return 0, fmt.Errorf("inspect checksum manifest: %w", err)
 	}
 	if !manifestInfo.Mode().IsRegular() {
-		fatalf("checksum manifest is not a regular file")
+		return 0, fmt.Errorf("checksum manifest is not a regular file")
 	}
-	if err := verifyFile(manifestPath, wantManifestChecksum); err != nil {
-		fatalf("verify checksum manifest: %v", err)
+	if err := verifyFile(manifestPath, policy.manifestChecksum); err != nil {
+		return 0, fmt.Errorf("verify checksum manifest: %w", err)
 	}
 	encoded, err := os.ReadFile(manifestPath)
 	if err != nil {
-		fatalf("read checksum manifest: %v", err)
+		return 0, fmt.Errorf("read checksum manifest: %w", err)
 	}
 	var manifest cargoChecksum
 	if err := json.Unmarshal(encoded, &manifest); err != nil {
-		fatalf("parse checksum manifest: %v", err)
+		return 0, fmt.Errorf("parse checksum manifest: %w", err)
 	}
-	if manifest.Package != wantPackageChecksum {
-		fatalf("package checksum = %q, want %q", manifest.Package, wantPackageChecksum)
+	if manifest.Package != policy.packageChecksum {
+		return 0, fmt.Errorf("package checksum = %q, want %q", manifest.Package, policy.packageChecksum)
 	}
 
 	seen := make(map[string]bool, len(manifest.Files))
@@ -78,8 +100,8 @@ func main() {
 		if !present {
 			return fmt.Errorf("unexpected file %s", relative)
 		}
-		if relative == shimPath {
-			want = wantShimChecksum
+		if relative == policy.shimPath {
+			want = policy.shimChecksum
 		}
 		if err := verifyFile(path, want); err != nil {
 			return fmt.Errorf("%s: %w", relative, err)
@@ -88,14 +110,14 @@ func main() {
 		return nil
 	})
 	if err != nil {
-		fatalf("verify vendor tree: %v", err)
+		return 0, err
 	}
 	for path := range manifest.Files {
 		if !seen[path] {
-			fatalf("manifest file is missing: %s", path)
+			return 0, fmt.Errorf("manifest file is missing: %s", path)
 		}
 	}
-	fmt.Printf("verified raptorq 2.0.1 package %s (%d files, reviewed shim applied)\n", manifest.Package, len(seen))
+	return len(seen), nil
 }
 
 func verifyFile(path, want string) error {

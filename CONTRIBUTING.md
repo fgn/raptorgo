@@ -6,8 +6,10 @@ correctness evidence, not just passing tests.
 
 ## Ground rules
 
-- The production module stays pure Go: no CGo and no third-party
-  dependencies in any Go package. `task lint` enforces this.
+- The production module stays pure Go: no CGo and no third-party runtime
+  dependencies in any production Go package. `task lint` enforces this. The
+  nested `dev` module may carry pinned dependencies used only by verification
+  tooling.
 - RFC 6330 behavior changes must come with evidence at the layer they touch:
   unit invariants, differential vectors against the pinned Rust oracle, or
   an updated formal model. `docs/invariants.md` maps behavior to evidence.
@@ -23,11 +25,11 @@ task verify         # RFC pinning, generated artifacts, TLA+ models
 task mutation:gate  # curated no-new-survivor mutation gate
 ```
 
-`task ci` requires Go (see `go.mod` for the version), plus `curl`, Java 17 or
-newer, and a Rust toolchain for the verification and oracle gates. Set
-`TLC_JAVA` to a Java 17+ executable when the system default is older. The
-heavier release gates (`task test:release`) are not required for routine
-changes.
+`task ci` requires Go (see `go.mod` for the version), plus `curl`, `sha256sum`,
+`tar`, Git, `flock`, a C++14 compiler, Java 17 or newer, and a Rust toolchain for
+the verification and oracle gates. Set `TLC_JAVA` to a Java 17+ executable when
+the system default is older. The heavier release gates (`task test:release`)
+are not required for routine changes.
 Mutation policy, broad audits, and baseline review are documented in
 [`docs/mutation-testing.md`](docs/mutation-testing.md).
 

@@ -80,7 +80,9 @@ tasks:
       - ./bin/gofumpt -w .
       - go mod edit -fmt
       - go mod tidy
-      - cargo fmt --manifest-path interop/rust-oracle/Cargo.toml
+      - go -C dev mod edit -fmt
+      - go -C dev mod tidy
+      - dev/scripts/cargo-oracle.sh fmt --manifest-path dev/interop/rust-oracle/Cargo.toml
 
   format:check:
     desc: fail when formatting or module metadata is stale
@@ -88,17 +90,19 @@ tasks:
       - task: install:gofumpt
       - test -z "$(./bin/gofumpt -l .)"
       - go mod tidy -diff
-      - cargo fmt --manifest-path interop/rust-oracle/Cargo.toml --check
+      - go -C dev mod tidy -diff
+      - dev/scripts/cargo-oracle.sh fmt --manifest-path dev/interop/rust-oracle/Cargo.toml --check
 
   lint:vet:
     desc: run the Go static analyzer
     cmds:
       - go vet ./...
+      - go -C dev vet ./...
 
   lint:purego:
-    desc: reject CGo and external dependencies in every Go package
+    desc: reject CGo and external dependencies in production Go packages
     cmds:
-      - go run ./internal/tooling/purego
+      - go -C dev run ./internal/tooling/purego
 
   lint:govulncheck:
     desc: scan reachable Go code for known vulnerabilities
@@ -117,6 +121,7 @@ tasks:
     desc: run all Go tests once with coverage
     cmds:
       - go test {{.CLI_ARGS | default "-count=1 -cover ./..."}}
+      - go -C dev test -count=1 ./...
 
   test:race:
     desc: run the race detector (its development-time runtime requires CGo)
@@ -150,25 +155,25 @@ tasks:
     desc: preview mutation counts over hand-written runtime source
     deps: [install:go-mutesting]
     cmds:
-      - sh scripts/mutation.sh list
+      - sh dev/scripts/mutation.sh list
 
   mutation:gate:
     desc: reject new survivors in the curated boundary and algebra kernels
     deps: [install:go-mutesting]
     cmds:
-      - sh scripts/mutation.sh gate
+      - sh dev/scripts/mutation.sh gate
 
   mutation:audit:
     desc: audit all hand-written runtime source and emit agent-ready reports
     deps: [install:go-mutesting]
     cmds:
-      - sh scripts/mutation.sh audit
+      - sh dev/scripts/mutation.sh audit
 
   mutation:changed:
     desc: reject survivors on lines changed from the configured Git base
     deps: [install:go-mutesting]
     cmds:
-      - sh scripts/mutation.sh changed
+      - sh dev/scripts/mutation.sh changed
 
   bench:
     desc: benchmark encoder/decoder K, T, loss, and overhead strata
@@ -195,13 +200,19 @@ tasks:
         set -eu
         temporary=$(mktemp)
         trap 'rm -f "$temporary"' EXIT
-        go run ./internal/codec/cmd/recoveryprofile >"$temporary"
-        cmp "$temporary" interop/corpus/recovery-profile.txt
+        go -C dev run ./internal/codec/cmd/recoveryprofile >"$temporary"
+        cmp "$temporary" dev/interop/corpus/recovery-profile.txt
 
   verify:rfc:
     desc: verify the pinned RFC source bytes
+    dir: dev/spec
     cmds:
-      - sha256sum -c spec/SHA256SUMS
+      - sha256sum -c SHA256SUMS
+
+  verify:module:
+    desc: enforce the production module ZIP size and content boundary
+    cmds:
+      - go -C dev run ./internal/tooling/checkmodule
 
   verify:generated:
     desc: reject stale Go-generated TLA trace data and RFC tables
@@ -210,82 +221,82 @@ tasks:
         set -eu
         temporary=$(mktemp -d)
         trap 'rm -rf "$temporary"' EXIT
-        go run ./internal/verifytrace/cmd/gentrace -scenario deliver -output "$temporary/deliver.tla"
-        go run ./internal/verifytrace/cmd/gentrace -scenario abort -output "$temporary/abort.tla"
-        go run ./internal/verifytrace/cmd/gentrace -scenario verify-fail -output "$temporary/verify-fail.tla"
-        go run ./internal/verifytrace/cmd/gentrace -scenario rejected-calls -output "$temporary/rejected-calls.tla"
-        go run ./internal/rfc6330/cmd/extracttables \
-          -rfc rfc6330.txt -output "$temporary/tables_gen.go"
-        go run ./internal/rfc6330/cmd/genmappingtrace \
+        go -C dev run ./internal/verifytrace/cmd/gentrace -scenario deliver -output "$temporary/deliver.tla"
+        go -C dev run ./internal/verifytrace/cmd/gentrace -scenario abort -output "$temporary/abort.tla"
+        go -C dev run ./internal/verifytrace/cmd/gentrace -scenario verify-fail -output "$temporary/verify-fail.tla"
+        go -C dev run ./internal/verifytrace/cmd/gentrace -scenario rejected-calls -output "$temporary/rejected-calls.tla"
+        go -C dev run ./internal/rfc6330/cmd/extracttables \
+          -rfc spec/rfc6330.txt -output "$temporary/tables_gen.go"
+        go -C dev run ./internal/rfc6330/cmd/genmappingtrace \
           -scenario valid -output "$temporary/mapping-trace.tla"
-        go run ./internal/rfc6330/cmd/genmappingtrace \
+        go -C dev run ./internal/rfc6330/cmd/genmappingtrace \
           -scenario invalid -output "$temporary/mapping-trace-invalid.tla"
-        go run ./internal/rfc6330/cmd/genmappingtrace \
+        go -C dev run ./internal/rfc6330/cmd/genmappingtrace \
           -scenario missing -output "$temporary/mapping-trace-missing.tla"
-        go run ./internal/matrix/cmd/genscheduletrace \
+        go -C dev run ./internal/matrix/cmd/genscheduletrace \
           -scenario valid -output "$temporary/sparse-schedule-trace.tla"
-        go run ./internal/matrix/cmd/genscheduletrace \
+        go -C dev run ./internal/matrix/cmd/genscheduletrace \
           -scenario missing -output "$temporary/sparse-schedule-trace-missing.tla"
-        go run ./internal/matrix/cmd/genscheduletrace \
+        go -C dev run ./internal/matrix/cmd/genscheduletrace \
           -scenario forged-swap -output "$temporary/sparse-schedule-trace-forged-swap.tla"
-        go run ./internal/matrix/cmd/genscheduletrace \
+        go -C dev run ./internal/matrix/cmd/genscheduletrace \
           -scenario forged-budget -output "$temporary/sparse-schedule-trace-forged-budget.tla"
-        go run ./internal/codec/cmd/geninactivationtrace \
+        go -C dev run ./internal/codec/cmd/geninactivationtrace \
           -scenario valid -output "$temporary/inactivation-trace.tla"
-        go run ./internal/codec/cmd/geninactivationtrace \
+        go -C dev run ./internal/codec/cmd/geninactivationtrace \
           -scenario missing -output "$temporary/inactivation-trace-missing.tla"
-        go run ./internal/codec/cmd/geninactivationtrace \
+        go -C dev run ./internal/codec/cmd/geninactivationtrace \
           -scenario forged-discard -output "$temporary/inactivation-trace-forged-discard.tla"
-        go run ./internal/codec/cmd/geninactivationtrace \
+        go -C dev run ./internal/codec/cmd/geninactivationtrace \
           -scenario forged-budget -output "$temporary/inactivation-trace-forged-budget.tla"
-        go run ./internal/codec/cmd/geninactivationtrace \
+        go -C dev run ./internal/codec/cmd/geninactivationtrace \
           -scenario forged-init-budget -output "$temporary/inactivation-trace-forged-init-budget.tla"
-        go run ./internal/codec/cmd/geninactivationtrace \
+        go -C dev run ./internal/codec/cmd/geninactivationtrace \
           -scenario forged-initial-u -output "$temporary/inactivation-trace-forged-initial-u.tla"
-        go run ./internal/codec/cmd/geninactivationtrace \
+        go -C dev run ./internal/codec/cmd/geninactivationtrace \
           -scenario forged-phase-label -output "$temporary/inactivation-trace-forged-phase-label.tla"
-        go run ./internal/codec/cmd/geninactivationtrace \
+        go -C dev run ./internal/codec/cmd/geninactivationtrace \
           -scenario forged-u -output "$temporary/inactivation-trace-forged-u.tla"
-        go run ./internal/codec/cmd/genhybridtrace \
+        go -C dev run ./internal/codec/cmd/genhybridtrace \
           -output "$temporary/hybrid-trace-data.tla"
-        go run ./internal/cmd/genobjecttrace \
+        go -C dev run ./internal/cmd/genobjecttrace \
           -scenario deliver -output "$temporary/object-decoder-trace-data.tla"
-        go run ./internal/cmd/genobjecttrace \
+        go -C dev run ./internal/cmd/genobjecttrace \
           -scenario verify-fail -output "$temporary/object-decoder-verify-failure-trace-data.tla"
-        go run ./internal/cmd/genobjecttrace \
+        go -C dev run ./internal/cmd/genobjecttrace \
           -scenario delivery-fail -output "$temporary/object-decoder-delivery-failure-trace-data.tla"
-        go run ./internal/cmd/genobjecttrace \
+        go -C dev run ./internal/cmd/genobjecttrace \
           -scenario decode-fail -output "$temporary/object-decoder-decode-failure-trace-data.tla"
-        cmp "$temporary/deliver.tla" formal/DecoderTraceData.tla
-        cmp "$temporary/abort.tla" formal/DecoderAbortTraceData.tla
-        cmp "$temporary/verify-fail.tla" formal/DecoderVerifyFailureTraceData.tla
-        cmp "$temporary/rejected-calls.tla" formal/DecoderRejectedCallsTraceData.tla
+        cmp "$temporary/deliver.tla" dev/formal/DecoderTraceData.tla
+        cmp "$temporary/abort.tla" dev/formal/DecoderAbortTraceData.tla
+        cmp "$temporary/verify-fail.tla" dev/formal/DecoderVerifyFailureTraceData.tla
+        cmp "$temporary/rejected-calls.tla" dev/formal/DecoderRejectedCallsTraceData.tla
         cmp "$temporary/tables_gen.go" internal/rfc6330/tables_gen.go
-        cmp "$temporary/mapping-trace.tla" formal/MappingTraceData.tla
-        cmp "$temporary/mapping-trace-invalid.tla" formal/MappingTraceInvalidData.tla
-        cmp "$temporary/mapping-trace-missing.tla" formal/MappingTraceMissingData.tla
-        cmp "$temporary/sparse-schedule-trace.tla" formal/SparseScheduleTraceData.tla
-        cmp "$temporary/sparse-schedule-trace-missing.tla" formal/SparseScheduleTraceMissingData.tla
-        cmp "$temporary/sparse-schedule-trace-forged-swap.tla" formal/SparseScheduleTraceForgedSwapData.tla
-        cmp "$temporary/sparse-schedule-trace-forged-budget.tla" formal/SparseScheduleTraceForgedBudgetData.tla
-        cmp "$temporary/inactivation-trace.tla" formal/InactivationTraceData.tla
-        cmp "$temporary/inactivation-trace-missing.tla" formal/InactivationTraceMissingData.tla
-        cmp "$temporary/inactivation-trace-forged-discard.tla" formal/InactivationTraceForgedDiscardData.tla
-        cmp "$temporary/inactivation-trace-forged-budget.tla" formal/InactivationTraceForgedBudgetData.tla
-        cmp "$temporary/inactivation-trace-forged-init-budget.tla" formal/InactivationTraceForgedInitBudgetData.tla
-        cmp "$temporary/inactivation-trace-forged-initial-u.tla" formal/InactivationTraceForgedInitialUData.tla
-        cmp "$temporary/inactivation-trace-forged-phase-label.tla" formal/InactivationTraceForgedPhaseLabelData.tla
-        cmp "$temporary/inactivation-trace-forged-u.tla" formal/InactivationTraceForgedUData.tla
-        cmp "$temporary/hybrid-trace-data.tla" formal/HybridTraceData.tla
-        cmp "$temporary/object-decoder-trace-data.tla" formal/ObjectDecoderTraceData.tla
-        cmp "$temporary/object-decoder-verify-failure-trace-data.tla" formal/ObjectDecoderVerifyFailureTraceData.tla
-        cmp "$temporary/object-decoder-delivery-failure-trace-data.tla" formal/ObjectDecoderDeliveryFailureTraceData.tla
-        cmp "$temporary/object-decoder-decode-failure-trace-data.tla" formal/ObjectDecoderDecodeFailureTraceData.tla
+        cmp "$temporary/mapping-trace.tla" dev/formal/MappingTraceData.tla
+        cmp "$temporary/mapping-trace-invalid.tla" dev/formal/MappingTraceInvalidData.tla
+        cmp "$temporary/mapping-trace-missing.tla" dev/formal/MappingTraceMissingData.tla
+        cmp "$temporary/sparse-schedule-trace.tla" dev/formal/SparseScheduleTraceData.tla
+        cmp "$temporary/sparse-schedule-trace-missing.tla" dev/formal/SparseScheduleTraceMissingData.tla
+        cmp "$temporary/sparse-schedule-trace-forged-swap.tla" dev/formal/SparseScheduleTraceForgedSwapData.tla
+        cmp "$temporary/sparse-schedule-trace-forged-budget.tla" dev/formal/SparseScheduleTraceForgedBudgetData.tla
+        cmp "$temporary/inactivation-trace.tla" dev/formal/InactivationTraceData.tla
+        cmp "$temporary/inactivation-trace-missing.tla" dev/formal/InactivationTraceMissingData.tla
+        cmp "$temporary/inactivation-trace-forged-discard.tla" dev/formal/InactivationTraceForgedDiscardData.tla
+        cmp "$temporary/inactivation-trace-forged-budget.tla" dev/formal/InactivationTraceForgedBudgetData.tla
+        cmp "$temporary/inactivation-trace-forged-init-budget.tla" dev/formal/InactivationTraceForgedInitBudgetData.tla
+        cmp "$temporary/inactivation-trace-forged-initial-u.tla" dev/formal/InactivationTraceForgedInitialUData.tla
+        cmp "$temporary/inactivation-trace-forged-phase-label.tla" dev/formal/InactivationTraceForgedPhaseLabelData.tla
+        cmp "$temporary/inactivation-trace-forged-u.tla" dev/formal/InactivationTraceForgedUData.tla
+        cmp "$temporary/hybrid-trace-data.tla" dev/formal/HybridTraceData.tla
+        cmp "$temporary/object-decoder-trace-data.tla" dev/formal/ObjectDecoderTraceData.tla
+        cmp "$temporary/object-decoder-verify-failure-trace-data.tla" dev/formal/ObjectDecoderVerifyFailureTraceData.tla
+        cmp "$temporary/object-decoder-delivery-failure-trace-data.tla" dev/formal/ObjectDecoderDeliveryFailureTraceData.tla
+        cmp "$temporary/object-decoder-decode-failure-trace-data.tla" dev/formal/ObjectDecoderDecodeFailureTraceData.tla
 
   verify:tla:
     desc: model-check static models and valid implementation traces
     deps: [install:tla2tools]
-    dir: formal
+    dir: dev/formal
     cmds:
       - ../scripts/tlc.sh -noGenerateSpecTE Partition.tla -config Partition.cfg
       - ../scripts/tlc.sh -noGenerateSpecTE SystematicMapping.tla -config SystematicMapping.cfg
@@ -309,7 +320,7 @@ tasks:
   verify:tla:negative:
     desc: prove invalid implementation traces fail the expected property
     deps: [install:tla2tools]
-    dir: formal
+    dir: dev/formal
     cmds:
       - |-
         set -eu
@@ -480,22 +491,48 @@ tasks:
     desc: run RFC, generated-artifact, and formal verification gates
     cmds:
       - task: verify:rfc
+      - task: verify:module
       - task: verify:generated
       - task: verify:tla
       - task: verify:tla:negative
 
   oracle:build:
     desc: format-check and build the pinned Rust parity oracle in release mode
-    deps: [verify:oracle-source]
+    deps: [oracle:prepare]
     cmds:
-      - cargo fmt --manifest-path interop/rust-oracle/Cargo.toml --check
-      - cargo build --release --locked --manifest-path interop/rust-oracle/Cargo.toml
-      - cargo test --release --locked --manifest-path interop/rust-oracle/Cargo.toml
+      - dev/scripts/cargo-oracle.sh fmt --manifest-path dev/interop/rust-oracle/Cargo.toml --check
+      - dev/scripts/cargo-oracle.sh build --release --locked --manifest-path dev/interop/rust-oracle/Cargo.toml
+      - dev/scripts/cargo-oracle.sh test --release --locked --manifest-path dev/interop/rust-oracle/Cargo.toml
+
+  oracle:prepare:
+    desc: fetch, authenticate, patch, and cache the pinned Rust oracle source
+    preconditions:
+      - sh: which curl
+        msg: please install curl
+      - sh: which sha256sum
+        msg: please install sha256sum
+      - sh: which tar
+        msg: please install tar
+      - sh: which git
+        msg: please install Git
+      - sh: which flock
+        msg: please install flock
+    cmds:
+      - dev/scripts/prepare-rust-oracle.sh >/dev/null
 
   verify:oracle-source:
-    desc: verify the pinned vendored Rust source and primitive-export shim
+    desc: compatibility alias for the authenticated Rust oracle source gate
+    deps: [oracle:prepare]
+
+  verify:oracle-infrastructure:
+    desc: test cold-cache concurrency, corruption repair, and offline Cargo resolution
+    preconditions:
+      - sh: which cargo
+        msg: please install Rust and Cargo
+      - sh: which flock
+        msg: please install flock
     cmds:
-      - go run ./internal/tooling/verifyvendor interop/vendor/raptorq-2.0.1
+      - dev/scripts/test-rust-oracle.sh
 
   oracle:primitives:
     desc: compare reproducible Go/Rust parameter and primitive vectors
@@ -505,9 +542,9 @@ tasks:
         set -eu
         temporary=$(mktemp -d)
         trap 'rm -rf "$temporary"' EXIT
-        go run ./internal/rfc6330/cmd/primitivevectors >"$temporary/go.vectors"
-        cargo run --quiet --release --locked \
-          --manifest-path interop/rust-oracle/Cargo.toml -- primitive-vectors \
+        go -C dev run ./internal/rfc6330/cmd/primitivevectors >"$temporary/go.vectors"
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked \
+          --manifest-path dev/interop/rust-oracle/Cargo.toml -- primitive-vectors \
           >"$temporary/rust.vectors"
         cmp "$temporary/go.vectors" "$temporary/rust.vectors"
 
@@ -519,9 +556,9 @@ tasks:
         set -eu
         temporary=$(mktemp -d)
         trap 'rm -rf "$temporary"' EXIT
-        go run ./internal/codec/cmd/rawvectors >"$temporary/go.vectors"
-        cargo run --quiet --release --locked \
-          --manifest-path interop/rust-oracle/Cargo.toml -- raw-vectors \
+        go -C dev run ./internal/codec/cmd/rawvectors >"$temporary/go.vectors"
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked \
+          --manifest-path dev/interop/rust-oracle/Cargo.toml -- raw-vectors \
           >"$temporary/rust.vectors"
         test "$(wc -l <"$temporary/go.vectors")" -eq 212
         test "$(awk '{print $2 ":" $3 ":" $4}' "$temporary/go.vectors" | sort -u | wc -l)" -eq 212
@@ -529,7 +566,7 @@ tasks:
         grep -E '^s 13 255 16777215 [0-9a-f]{510}$' "$temporary/go.vectors" >/dev/null
         cmp "$temporary/go.vectors" "$temporary/rust.vectors"
         cp "$temporary/go.vectors" "$temporary/raw-go-rust.vectors"
-        (cd "$temporary" && sha256sum -c '{{.ROOT_DIR}}/interop/corpus/raw.sha256')
+        (cd "$temporary" && sha256sum -c '{{.ROOT_DIR}}/dev/interop/corpus/raw.sha256')
 
   oracle:raw:release:
     desc: compare full-domain raw payload sentinels with pinned Rust raptorq
@@ -539,14 +576,14 @@ tasks:
         set -eu
         temporary=$(mktemp -d)
         trap 'rm -rf "$temporary"' EXIT
-        go run ./internal/codec/cmd/rawvectors release >"$temporary/go.vectors"
-        cargo run --quiet --release --locked --offline \
-          --manifest-path interop/rust-oracle/Cargo.toml -- raw-vectors-release \
+        go -C dev run ./internal/codec/cmd/rawvectors release >"$temporary/go.vectors"
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked --offline \
+          --manifest-path dev/interop/rust-oracle/Cargo.toml -- raw-vectors-release \
           >"$temporary/rust.vectors"
         test "$(wc -l <"$temporary/go.vectors")" -eq 66
         cmp "$temporary/go.vectors" "$temporary/rust.vectors"
         cp "$temporary/go.vectors" "$temporary/raw-go-rust-release.vectors"
-        (cd "$temporary" && sha256sum -c '{{.ROOT_DIR}}/interop/corpus/raw-release.sha256')
+        (cd "$temporary" && sha256sum -c '{{.ROOT_DIR}}/dev/interop/corpus/raw-release.sha256')
 
   oracle:cross:
     desc: cross-decode deterministic Go/Rust source, repair, and partition frames
@@ -556,130 +593,130 @@ tasks:
         set -eu
         temporary=$(mktemp -d)
         trap 'rm -rf "$temporary"' EXIT
-        head -c 4096 rfc6330.txt >"$temporary/single.input"
+        head -c 4096 dev/spec/rfc6330.txt >"$temporary/single.input"
         single_oti=000000100000008001000101
-        cargo run --quiet --release --locked --offline \
-          --manifest-path interop/rust-oracle/Cargo.toml -- \
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked --offline \
+          --manifest-path dev/interop/rust-oracle/Cargo.toml -- \
           encode-range "$temporary/single.input" "$single_oti" 0 0 32 \
           "$temporary/rust-source.rqo1"
-        go run ./internal/cmd/rqframe encode-range \
+        go -C dev run ./internal/cmd/rqframe encode-range \
           "$temporary/single.input" "$single_oti" 0 0 32 \
           "$temporary/single-block-source.rqo1"
         cmp "$temporary/single-block-source.rqo1" "$temporary/rust-source.rqo1"
-        go run ./internal/cmd/rqframe decode \
+        go -C dev run ./internal/cmd/rqframe decode \
           "$temporary/rust-source.rqo1" "$temporary/go-source.decoded"
-        cargo run --quiet --release --locked --offline \
-          --manifest-path interop/rust-oracle/Cargo.toml -- decode \
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked --offline \
+          --manifest-path dev/interop/rust-oracle/Cargo.toml -- decode \
           "$temporary/single-block-source.rqo1" "$temporary/rust-source.decoded"
         cmp "$temporary/single.input" "$temporary/go-source.decoded"
         cmp "$temporary/single.input" "$temporary/rust-source.decoded"
-        cargo run --quiet --release --locked --offline \
-          --manifest-path interop/rust-oracle/Cargo.toml -- \
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked --offline \
+          --manifest-path dev/interop/rust-oracle/Cargo.toml -- \
           encode-range "$temporary/single.input" "$single_oti" 0 32 40 \
           "$temporary/rust-repair.rqo1"
-        go run ./internal/cmd/rqframe encode-range \
+        go -C dev run ./internal/cmd/rqframe encode-range \
           "$temporary/single.input" "$single_oti" 0 32 40 \
           "$temporary/single-block-repair.rqo1"
         cmp "$temporary/single-block-repair.rqo1" "$temporary/rust-repair.rqo1"
-        go run ./internal/cmd/rqframe decode \
+        go -C dev run ./internal/cmd/rqframe decode \
           "$temporary/rust-repair.rqo1" "$temporary/go-repair.decoded"
-        cargo run --quiet --release --locked --offline \
-          --manifest-path interop/rust-oracle/Cargo.toml -- decode \
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked --offline \
+          --manifest-path dev/interop/rust-oracle/Cargo.toml -- decode \
           "$temporary/single-block-repair.rqo1" "$temporary/rust-repair.decoded"
         cmp "$temporary/single.input" "$temporary/go-repair.decoded"
         cmp "$temporary/single.input" "$temporary/rust-repair.decoded"
-        head -c 29 rfc6330.txt >"$temporary/partition.input"
+        head -c 29 dev/spec/rfc6330.txt >"$temporary/partition.input"
         partition_oti=000000001d00000602000401
-        cargo run --quiet --release --locked --offline \
-          --manifest-path interop/rust-oracle/Cargo.toml -- \
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked --offline \
+          --manifest-path dev/interop/rust-oracle/Cargo.toml -- \
           encode-all-source "$temporary/partition.input" "$partition_oti" \
           "$temporary/rust-partition.rqo1"
-        go run ./internal/cmd/rqframe encode-all-source \
+        go -C dev run ./internal/cmd/rqframe encode-all-source \
           "$temporary/partition.input" "$partition_oti" \
           "$temporary/multiblock-subblock-source.rqo1"
         cmp "$temporary/multiblock-subblock-source.rqo1" "$temporary/rust-partition.rqo1"
-        go run ./internal/cmd/rqframe decode \
+        go -C dev run ./internal/cmd/rqframe decode \
           "$temporary/rust-partition.rqo1" "$temporary/go-partition.decoded"
-        cargo run --quiet --release --locked --offline \
-          --manifest-path interop/rust-oracle/Cargo.toml -- decode \
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked --offline \
+          --manifest-path dev/interop/rust-oracle/Cargo.toml -- decode \
           "$temporary/multiblock-subblock-source.rqo1" "$temporary/rust-partition.decoded"
         cmp "$temporary/partition.input" "$temporary/go-partition.decoded"
         cmp "$temporary/partition.input" "$temporary/rust-partition.decoded"
-        head -c 13 rfc6330.txt >"$temporary/padding.input"
+        head -c 13 dev/spec/rfc6330.txt >"$temporary/padding.input"
         padding_oti=000000000d00000501000301
-        cargo run --quiet --release --locked --offline \
-          --manifest-path interop/rust-oracle/Cargo.toml -- \
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked --offline \
+          --manifest-path dev/interop/rust-oracle/Cargo.toml -- \
           encode-all-source-grouped "$temporary/padding.input" "$padding_oti" \
           2 true "$temporary/rust-grouped-shortened.rqo1"
-        go run ./internal/cmd/rqframe encode-all-source-grouped \
+        go -C dev run ./internal/cmd/rqframe encode-all-source-grouped \
           "$temporary/padding.input" "$padding_oti" 2 true \
           "$temporary/grouped-shortened-source.rqo1"
         cmp "$temporary/grouped-shortened-source.rqo1" \
           "$temporary/rust-grouped-shortened.rqo1"
-        go run ./internal/cmd/rqframe decode \
+        go -C dev run ./internal/cmd/rqframe decode \
           "$temporary/rust-grouped-shortened.rqo1" \
           "$temporary/go-grouped-shortened.decoded"
-        cargo run --quiet --release --locked --offline \
-          --manifest-path interop/rust-oracle/Cargo.toml -- decode \
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked --offline \
+          --manifest-path dev/interop/rust-oracle/Cargo.toml -- decode \
           "$temporary/grouped-shortened-source.rqo1" \
           "$temporary/rust-grouped-shortened.decoded"
         cmp "$temporary/padding.input" "$temporary/go-grouped-shortened.decoded"
         cmp "$temporary/padding.input" "$temporary/rust-grouped-shortened.decoded"
-        cargo run --quiet --release --locked --offline \
-          --manifest-path interop/rust-oracle/Cargo.toml -- \
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked --offline \
+          --manifest-path dev/interop/rust-oracle/Cargo.toml -- \
           encode-grouped-range "$temporary/single.input" "$single_oti" \
           0 32 40 7 false "$temporary/rust-grouped-repair.rqo1"
-        go run ./internal/cmd/rqframe encode-grouped-range \
+        go -C dev run ./internal/cmd/rqframe encode-grouped-range \
           "$temporary/single.input" "$single_oti" 0 32 40 7 false \
           "$temporary/grouped-repair.rqo1"
         cmp "$temporary/grouped-repair.rqo1" "$temporary/rust-grouped-repair.rqo1"
-        go run ./internal/cmd/rqframe decode \
+        go -C dev run ./internal/cmd/rqframe decode \
           "$temporary/rust-grouped-repair.rqo1" \
           "$temporary/go-grouped-repair.decoded"
-        cargo run --quiet --release --locked --offline \
-          --manifest-path interop/rust-oracle/Cargo.toml -- decode \
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked --offline \
+          --manifest-path dev/interop/rust-oracle/Cargo.toml -- decode \
           "$temporary/grouped-repair.rqo1" "$temporary/rust-grouped-repair.decoded"
         cmp "$temporary/single.input" "$temporary/go-grouped-repair.decoded"
         cmp "$temporary/single.input" "$temporary/rust-grouped-repair.decoded"
-        cargo run --quiet --release --locked --offline \
-          --manifest-path interop/rust-oracle/Cargo.toml -- \
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked --offline \
+          --manifest-path dev/interop/rust-oracle/Cargo.toml -- \
           encode-all-source-grouped "$temporary/partition.input" "$partition_oti" \
           2 true "$temporary/rust-grouped-partition.rqo1"
-        go run ./internal/cmd/rqframe encode-all-source-grouped \
+        go -C dev run ./internal/cmd/rqframe encode-all-source-grouped \
           "$temporary/partition.input" "$partition_oti" 2 true \
           "$temporary/grouped-multiblock-subblock-source.rqo1"
         cmp "$temporary/grouped-multiblock-subblock-source.rqo1" \
           "$temporary/rust-grouped-partition.rqo1"
-        go run ./internal/cmd/rqframe decode \
+        go -C dev run ./internal/cmd/rqframe decode \
           "$temporary/rust-grouped-partition.rqo1" \
           "$temporary/go-grouped-partition.decoded"
-        cargo run --quiet --release --locked --offline \
-          --manifest-path interop/rust-oracle/Cargo.toml -- decode \
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked --offline \
+          --manifest-path dev/interop/rust-oracle/Cargo.toml -- decode \
           "$temporary/grouped-multiblock-subblock-source.rqo1" \
           "$temporary/rust-grouped-partition.decoded"
         cmp "$temporary/partition.input" "$temporary/go-grouped-partition.decoded"
         cmp "$temporary/partition.input" "$temporary/rust-grouped-partition.decoded"
-        cargo run --quiet --release --locked --offline \
-          --manifest-path interop/rust-oracle/Cargo.toml -- \
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked --offline \
+          --manifest-path dev/interop/rust-oracle/Cargo.toml -- \
           encode-loss-repair-grouped "$temporary/partition.input" "$partition_oti" \
           2 8 "$temporary/rust-grouped-partition-loss-repair.rqo1"
-        go run ./internal/cmd/rqframe encode-loss-repair-grouped \
+        go -C dev run ./internal/cmd/rqframe encode-loss-repair-grouped \
           "$temporary/partition.input" "$partition_oti" 2 8 \
           "$temporary/grouped-multiblock-subblock-loss-repair.rqo1"
         cmp "$temporary/grouped-multiblock-subblock-loss-repair.rqo1" \
           "$temporary/rust-grouped-partition-loss-repair.rqo1"
-        go run ./internal/cmd/rqframe decode \
+        go -C dev run ./internal/cmd/rqframe decode \
           "$temporary/rust-grouped-partition-loss-repair.rqo1" \
           "$temporary/go-grouped-partition-loss-repair.decoded"
-        cargo run --quiet --release --locked --offline \
-          --manifest-path interop/rust-oracle/Cargo.toml -- decode \
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked --offline \
+          --manifest-path dev/interop/rust-oracle/Cargo.toml -- decode \
           "$temporary/grouped-multiblock-subblock-loss-repair.rqo1" \
           "$temporary/rust-grouped-partition-loss-repair.decoded"
         cmp "$temporary/partition.input" \
           "$temporary/go-grouped-partition-loss-repair.decoded"
         cmp "$temporary/partition.input" \
           "$temporary/rust-grouped-partition-loss-repair.decoded"
-        (cd "$temporary" && sha256sum -c '{{.ROOT_DIR}}/interop/corpus/cross.sha256')
+        (cd "$temporary" && sha256sum -c '{{.ROOT_DIR}}/dev/interop/corpus/cross.sha256')
 
   oracle:cpp:
     desc: compare the pinned independent C++ corpus and preserve its K=49 divergence
@@ -706,17 +743,17 @@ tasks:
         source_dir="$temporary/libRaptorQ-{{.LIBRAPTORQ_COMMIT}}"
         g++ -std=c++14 -O2 -pthread \
           -I"$source_dir/src" -I"$source_dir/external/eigen3" \
-          interop/cpp-oracle/main.cpp -o "$temporary/cpp-oracle"
+          dev/interop/cpp-oracle/main.cpp -o "$temporary/cpp-oracle"
         "$temporary/cpp-oracle" raw-vectors \
           >"$temporary/go-rust-cpp-consensus.vectors"
-        go run ./internal/codec/cmd/rawvectors | \
+        go -C dev run ./internal/codec/cmd/rawvectors | \
           awk '($2==10 || $2==12 || $2==48) && ($3==1 || $3==7 || $3==31) && $4 != 16777215' \
           >"$temporary/go-consensus.vectors"
         test "$(wc -l <"$temporary/go-rust-cpp-consensus.vectors")" -eq 45
         cmp "$temporary/go-consensus.vectors" "$temporary/go-rust-cpp-consensus.vectors"
         "$temporary/cpp-oracle" k49-vectors \
           >"$temporary/cpp-k49-divergence.vectors"
-        go run ./internal/codec/cmd/rawvectors | \
+        go -C dev run ./internal/codec/cmd/rawvectors | \
           awk '$2==49 && ($3==1 || $3==7 || $3==31) && $4 != 16777215' \
           >"$temporary/go-k49.vectors"
         awk '$4 < 49' "$temporary/go-k49.vectors" >"$temporary/go-k49-source.vectors"
@@ -733,16 +770,16 @@ tasks:
           object_bytes=$3
           oti=$4
           input="$temporary/cpp-cross-k${k}-t${symbol_size}.input"
-          head -c "$object_bytes" rfc6330.txt >"$input"
+          head -c "$object_bytes" dev/spec/rfc6330.txt >"$input"
           for pattern in repair mixed deficient; do
             artifact="cpp-cross-k${k}-t${symbol_size}-${pattern}.rqo1"
-            go run ./internal/cmd/rqframe encode-pattern \
+            go -C dev run ./internal/cmd/rqframe encode-pattern \
               "$input" "$oti" 0 "$pattern" "$temporary/go-cross.rqo1"
             "$temporary/cpp-oracle" encode-cross \
               "$input" "$k" "$symbol_size" "$pattern" "$temporary/$artifact"
             cmp "$temporary/go-cross.rqo1" "$temporary/$artifact"
             if [ "$pattern" = deficient ]; then
-              if go run ./internal/cmd/rqframe decode \
+              if go -C dev run ./internal/cmd/rqframe decode \
                 "$temporary/$artifact" "$temporary/go-cross.decoded" \
                 >/dev/null 2>&1; then
                 echo "Go decoded deficient C++ K=$k T=$symbol_size frame" >&2
@@ -755,7 +792,7 @@ tasks:
                 return 1
               fi
             else
-              go run ./internal/cmd/rqframe decode \
+              go -C dev run ./internal/cmd/rqframe decode \
                 "$temporary/$artifact" "$temporary/go-cross.decoded"
               "$temporary/cpp-oracle" decode-cross \
                 "$temporary/go-cross.rqo1" "$temporary/cpp-cross.decoded"
@@ -767,23 +804,23 @@ tasks:
         cross_case 10 31 310 000000013600001f01000101
         cross_case 12 7 84 000000005400000701000101
         cross_case 48 7 336 000000015000000701000101
-        (cd "$temporary" && sha256sum -c '{{.ROOT_DIR}}/interop/corpus/cpp.sha256')
+        (cd "$temporary" && sha256sum -c '{{.ROOT_DIR}}/dev/interop/corpus/cpp.sha256')
 
   oracle:test:
     desc: smoke-test Rust encode/decode and malformed-input rejection
-    deps: [oracle:primitives, oracle:raw, oracle:cross, oracle:cpp]
+    deps: [oracle:primitives, oracle:raw, oracle:cross, oracle:cpp, verify:oracle-infrastructure]
     cmds:
       - |-
         set -eu
         temporary=$(mktemp -d)
         trap 'rm -rf "$temporary"' EXIT
-        cargo run --quiet --release --locked --manifest-path interop/rust-oracle/Cargo.toml -- \
-          encode-default rfc6330.txt 1400 2 "$temporary/frame"
-        cargo run --quiet --release --locked --manifest-path interop/rust-oracle/Cargo.toml -- \
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked --manifest-path dev/interop/rust-oracle/Cargo.toml -- \
+          encode-default dev/spec/rfc6330.txt 1400 2 "$temporary/frame"
+        dev/scripts/cargo-oracle.sh run --quiet --release --locked --manifest-path dev/interop/rust-oracle/Cargo.toml -- \
           decode "$temporary/frame" "$temporary/decoded"
-        cmp rfc6330.txt "$temporary/decoded"
-        if cargo run --quiet --release --locked --manifest-path interop/rust-oracle/Cargo.toml -- \
-          encode-default rfc6330.txt 0 2 "$temporary/invalid" \
+        cmp dev/spec/rfc6330.txt "$temporary/decoded"
+        if dev/scripts/cargo-oracle.sh run --quiet --release --locked --manifest-path dev/interop/rust-oracle/Cargo.toml -- \
+          encode-default dev/spec/rfc6330.txt 0 2 "$temporary/invalid" \
           >"$temporary/invalid.out" 2>&1; then
           echo 'Rust oracle accepted an invalid zero MTU' >&2
           exit 1

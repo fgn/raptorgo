@@ -3,9 +3,12 @@
 Everything below this directory is development tooling. It is not imported by
 the Go module and is not part of production builds.
 
-The Rust oracle is pinned by `Cargo.lock` and a checked-in copy of `raptorq`
-2.0.1 with a minimal primitive-export shim. It supports default-parameter
-encoding, explicit OTI/SBN/ESI range encoding, frame decoding, and an
+The Rust oracle is pinned by `Cargo.lock` to `raptorq` 2.0.1. `task
+oracle:prepare` downloads the immutable crate archive into an external cache,
+verifies its package SHA-256 and complete file manifest, and applies the
+checked-in primitive-export patch. No upstream Rust source or build artifact is
+kept in this repository. The oracle supports default-parameter encoding,
+explicit OTI/SBN/ESI range encoding, frame decoding, and an
 `extended-map` mode. Its `primitive-vectors` mode reproducibly compares every
 valid K-to-K' and ESI-to-ISI boundary, every full Table 2 parameter row, seven
 tuple IDs per row, 65,541 Rand cases, and all Deg inputs at four W values. Its

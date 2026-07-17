@@ -4,7 +4,7 @@ set -eu
 
 tool=${GO_MUTESTING:-./bin/go-mutesting}
 workers=${MUTATION_WORKERS:-6}
-baseline=mutation/baseline.json
+baseline=dev/mutation/baseline.json
 
 runtime_targets() {
 	find . -maxdepth 1 -type f -name '*.go' ! -name '*_test.go'

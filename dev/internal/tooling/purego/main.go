@@ -1,6 +1,6 @@
-// Command purego verifies every Go package in this module, including Go
-// development commands, has no CGo files or external dependencies. The Rust
-// oracle is outside the Go module's dependency graph.
+// Command purego verifies that the production Go module has no CGo files or
+// external runtime dependencies. Development tooling lives in a nested module
+// and is deliberately outside the production dependency graph.
 package main
 
 import (
@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -19,8 +20,12 @@ type listedPackage struct {
 }
 
 func main() {
-	modulePath := commandOutput("go", "list", "-m")
-	command := exec.Command("go", "list", "-deps", "-json", "./...")
+	root, err := filepath.Abs("..")
+	if err != nil {
+		fatalf("resolve production module root: %v", err)
+	}
+	modulePath := commandOutput("go", "-C", root, "list", "-m")
+	command := exec.Command("go", "-C", root, "list", "-deps", "-json", "./...")
 	command.Env = replaceEnvironment(os.Environ(), "CGO_ENABLED", "1")
 	output, err := command.StdoutPipe()
 	if err != nil {

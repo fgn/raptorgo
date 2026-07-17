@@ -28,10 +28,11 @@
 - [x] Choose the final public repository/module path:
   `github.com/fgn/raptorgo`.
 - [x] Select the project license: Apache License 2.0.
-- [ ] Complete the intended patent/legal review. This is a deliberate
-  outstanding owner decision and must finish before public release.
-- [ ] Add public release/version automation after the patent/legal review
-  completes.
+- [x] Complete the intended patent/legal review; the owner greenlit publication
+  on 2026-07-17.
+- [x] Isolate all development tooling in a nested module and enforce a small,
+  production-only module ZIP in CI.
+- [ ] Add public release/version automation.
 
 ## Optional optimization work
 

@@ -7,10 +7,10 @@
 /go-mutesting-report.html
 /go-mutesting-summary.json
 /report.json
-/interop/rust-oracle/target/
-/formal/states/
-/formal/*.out
-/formal/*_TTrace_*.tla
-/formal/*_TTrace_*.cfg
-/formal/*_TTrace_*.bin
+/dev/interop/rust-oracle/target/
+/dev/formal/states/
+/dev/formal/*.out
+/dev/formal/*_TTrace_*.tla
+/dev/formal/*_TTrace_*.cfg
+/dev/formal/*_TTrace_*.bin
 *.swp

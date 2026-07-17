@@ -127,8 +127,8 @@ reimplemented in TLA+.
 For a focused model run, use the checked launcher from the repository root:
 
 ```sh
-scripts/tlc.sh -noGenerateSpecTE formal/DecoderLifecycle.tla \
-  -config formal/DecoderLifecycle.cfg
+dev/scripts/tlc.sh -noGenerateSpecTE dev/formal/DecoderLifecycle.tla \
+  -config dev/formal/DecoderLifecycle.cfg
 ```
 
 `task verify:tla` first checks the pinned jar hash. The focused launcher always

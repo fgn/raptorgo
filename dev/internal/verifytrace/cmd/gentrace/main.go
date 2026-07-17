@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/fgn/raptorgo/internal/verifytrace"
+	"github.com/fgn/raptorgo/dev/internal/verifytrace"
 )
 
 func main() {

@@ -85,9 +85,9 @@ checking is not presented as a proof of byte-level interoperability.
 ## Publication decisions outside codec completeness
 
 The source uses the public `github.com/fgn/raptorgo` module path and is
-licensed under the Apache License 2.0. The intended patent review remains
-outstanding and must be completed before public release. The RFC-extracted
-code-component notice is retained in `internal/rfc6330`.
+licensed under the Apache License 2.0. The owner completed the intended legal
+review and greenlit publication on 2026-07-17. The RFC-extracted code-component
+notice is retained in `internal/rfc6330`.
 
 Operation-plan caching and architecture-specific acceleration remain optional
 future performance work. They are not correctness prerequisites and must

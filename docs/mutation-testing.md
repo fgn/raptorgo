@@ -57,7 +57,7 @@ The baseline is intentionally tiny and reviewed by stable mutant ID:
 | `64a676bc87479142a23d42c2f00c50e0` | Return octet 1 instead of 0 with `ok=false` from `Inv(0)`. | The octet is explicitly undefined when `ok` is false and must not be consumed. |
 | `0c01f436f4aa833019d778a3b235504a` | Return size 1 instead of 0 with a non-nil partition-index error. | The size is undefined on error and must not be consumed. |
 
-Never update `mutation/baseline.json` automatically in CI. A proposed entry
+Never update `dev/mutation/baseline.json` automatically in CI. A proposed entry
 must include its exact diff and a behavioral-equivalence explanation here.
 Deleting production behavior or weakening an invariant is not equivalent
 merely because another gate happens to catch it.

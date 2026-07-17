@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 jar="$root/bin/tla2tools-v1.8.0.jar"
 
 if [ -n "${TLC_JAVA:-}" ]; then

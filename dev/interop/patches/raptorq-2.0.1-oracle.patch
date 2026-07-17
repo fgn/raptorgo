@@ -1,0 +1,37 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 7cbc824..aa839ca 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -43,7 +43,16 @@ pub use crate::base::EncodingPacket;
+ pub use crate::base::EncodingPacket;
+ pub use crate::base::ObjectTransmissionInformation;
+ pub use crate::base::PayloadId;
++// MODIFICATION NOTICE (Apache License 2.0, Section 4(b)): this ephemeral source
++// differs from the crates.io raptorq 2.0.1 release. The raptorgo project added
++// the development-oracle shim below, which re-exports existing deterministic
++// RFC primitives so the Go implementation can regenerate differential vectors
++// from this pinned source. No algorithm or table is changed. See
++// dev/interop/README.md in the raptorgo repository for the verification policy.
++pub use crate::base::deg;
++pub use crate::base::intermediate_tuple;
+ pub use crate::base::partition;
++pub use crate::constraint_matrix::enc_indices;
+ #[cfg(not(feature = "python"))]
+ pub use crate::decoder::Decoder;
+ pub use crate::decoder::SourceBlockDecoder;
+@@ -60,6 +69,14 @@ pub use crate::encoder::SourceBlockEncoder;
+ #[cfg(feature = "python")]
+ pub use crate::python::raptorq;
+ pub use crate::systematic_constants::extended_source_block_symbols;
++pub use crate::rng::rand;
++pub use crate::systematic_constants::calculate_p1;
++pub use crate::systematic_constants::num_hdpc_symbols;
++pub use crate::systematic_constants::num_intermediate_symbols;
++pub use crate::systematic_constants::num_ldpc_symbols;
++pub use crate::systematic_constants::num_lt_symbols;
++pub use crate::systematic_constants::num_pi_symbols;
++pub use crate::systematic_constants::systematic_index;
+-
++
+ #[cfg(feature = "benchmarking")]
+ pub use crate::constraint_matrix::generate_constraint_matrix;

@@ -24,8 +24,10 @@ the same defect.
 - license: Apache-2.0; and
 - role: full-domain primitive/raw parity plus object cross-decoding.
 
-The reviewed vendored source is development tooling. A verifier pins its file
-set and checksum and permits only the documented primitive-export shim.
+`task oracle:prepare` downloads the immutable crate archive into an external
+cache, verifies its package checksum and complete file manifest, and applies
+the reviewed primitive-export shim. No upstream Rust source is checked into the
+repository or included in the production Go module.
 
 ### C++ `LucaFulchir/libRaptorQ`
 
@@ -45,7 +47,7 @@ runtime package.
 
 ## Reproducible corpora
 
-`interop/corpus` contains compact SHA-256 manifests rather than generated
+`dev/interop/corpus` contains compact SHA-256 manifests rather than generated
 payload blobs. Tasks regenerate complete artifacts in a temporary directory,
 compare independent bytes, verify the manifest, and discard the files.
 
@@ -125,7 +127,7 @@ fail its named invariant or temporal property.
 
 TLA+ does not reimplement GF(256) or establish general byte-level
 interoperability. Those claims remain owned by exhaustive polynomial arithmetic,
-rank/equation checks, and external corpora. See `formal/README.md` for the
+rank/equation checks, and external corpora. See `dev/formal/README.md` for the
 module-by-module boundary.
 
 ## CI split

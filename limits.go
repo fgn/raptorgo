@@ -36,21 +36,47 @@ const (
 // Limits bounds all sizes controlled by OTI or packet data before allocation.
 // Every allocation-sensitive operation validates externally controlled input
 // against a Limits value taken as an argument or retained from construction.
+// Every field must be nonzero; see Validate.
 type Limits struct {
-	MaxTransferLength         uint64
-	MaxSymbolSize             uint16
-	MaxSourceBlocks           uint8
-	MaxSubBlocks              uint16
-	MaxSymbolAlignment        uint8
-	MaxSourceSymbolsPerBlock  uint32
-	MaxSourceBlockBytes       uint64
-	MaxPacketBytes            uint64
-	MaxSymbolsPerPacket       uint32
-	MaxRetainedSymbols        uint32
-	MaxDecodeAttempts         uint32
-	MaxRepairSymbolsPerBlock  uint32
+	// MaxTransferLength bounds OTI.TransferLength (F) in bytes; it may not
+	// exceed the RFC ceiling MaxTransferLength.
+	MaxTransferLength uint64
+	// MaxSymbolSize bounds OTI.SymbolSize (T) in bytes.
+	MaxSymbolSize uint16
+	// MaxSourceBlocks bounds OTI.SourceBlocks (Z).
+	MaxSourceBlocks uint8
+	// MaxSubBlocks bounds OTI.SubBlocks (N).
+	MaxSubBlocks uint16
+	// MaxSymbolAlignment bounds OTI.SymbolAlignment (Al) in bytes.
+	MaxSymbolAlignment uint8
+	// MaxSourceSymbolsPerBlock bounds K, the source symbols in any single
+	// source block; it may not exceed K'_max (MaxSourceSymbolsPerBlock).
+	MaxSourceSymbolsPerBlock uint32
+	// MaxSourceBlockBytes bounds K*T, the size in bytes of any single
+	// source block.
+	MaxSourceBlockBytes uint64
+	// MaxPacketBytes bounds the encoded size in bytes of one encoding
+	// packet, including its FEC Payload ID.
+	MaxPacketBytes uint64
+	// MaxSymbolsPerPacket bounds G, the symbols grouped into one packet.
+	MaxSymbolsPerPacket uint32
+	// MaxRetainedSymbols bounds the source plus repair symbols one block
+	// decoder retains at once. It must be at least K for every block the
+	// OTI derives, or NewObjectDecoder fails.
+	MaxRetainedSymbols uint32
+	// MaxDecodeAttempts bounds bounded decode attempts per source block
+	// before the decoder gives up.
+	MaxDecodeAttempts uint32
+	// MaxRepairSymbolsPerBlock bounds the repair symbols retained per source
+	// block beyond its K source symbols.
+	MaxRepairSymbolsPerBlock uint32
+	// MaxDenseCompletionSymbols bounds the dense-completion stage of the
+	// hybrid solver, at most MaxIntermediateSymbols. It must be at least P,
+	// the block's PI symbol count, or NewObjectDecoder fails.
 	MaxDenseCompletionSymbols uint32
-	MaxWorkingMemory          uint64
+	// MaxWorkingMemory bounds the peak logical backing bytes of any single
+	// encoder or decoder operation, computed before allocation.
+	MaxWorkingMemory uint64
 }
 
 // DefaultLimits returns conservative production defaults. They intentionally

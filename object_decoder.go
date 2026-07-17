@@ -40,6 +40,8 @@ const (
 	ObjectDeliveryFailed
 )
 
+// String returns a short lower-case name for the state, such as "receiving",
+// "delivered", or "verification-failed".
 func (state ObjectDecoderState) String() string {
 	switch state {
 	case ObjectReceiving:
@@ -64,19 +66,28 @@ func (state ObjectDecoderState) String() string {
 // VerificationRequest binds reconstructed bytes to their OTI and an
 // application-supplied generation/context identifier. Object is read-only.
 type VerificationRequest struct {
-	OTI     OTI
+	// OTI describes the reconstructed object being verified.
+	OTI OTI
+	// Context is the identifier supplied to NewObjectDecoder, so one shared
+	// verifier can distinguish concurrent transfers.
 	Context string
 	// Length equals OTI.TransferLength and exists for convenience.
 	Length uint64
+	// Object streams the reconstructed bytes. It is valid only for the
+	// duration of the verifier call and must not be retained.
 	Object io.Reader
 }
 
 // VerifiedObject is passed exactly once to the delivery callback after its
 // corresponding VerificationRequest succeeds. Bytes are owned by the callback.
 type VerifiedObject struct {
-	OTI     OTI
+	// OTI describes the delivered object.
+	OTI OTI
+	// Context is the identifier supplied to NewObjectDecoder.
 	Context string
-	Bytes   []byte
+	// Bytes is an owned copy of the verified object, exactly
+	// OTI.TransferLength long; the callback may retain and mutate it.
+	Bytes []byte
 }
 
 type (

@@ -2,6 +2,8 @@ package raptorgo_test
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 
@@ -60,6 +62,104 @@ func Example() {
 
 	// Output:
 	// hello, RaptorQ
+}
+
+// Example_authenticatedTransfer is the recommended receiver pattern. The
+// sender transmits the 12-byte OTI and a SHA-256 digest over an authenticated
+// out-of-band channel, the network loses one source packet in five, repair
+// packets (ESI >= K) stand in for the losses, and the receiver delivers the
+// object only after the digest verifies. FEC repairs erasures; it never
+// authenticates bytes, so the verifier compares against the out-of-band
+// digest rather than trusting FEC success.
+func Example_authenticatedTransfer() {
+	// Sender: derive an OTI, build the encoder, and publish the OTI and
+	// object digest through an authenticated out-of-band channel.
+	object := bytes.Repeat([]byte("raptorgo"), 512)
+	limits := raptorgo.DefaultLimits()
+	oti, err := raptorgo.DeriveOTI(raptorgo.DerivationInput{
+		TransferLength:             uint64(len(object)),
+		DecoderBlockBytes:          1 << 20,
+		MaxPayloadSize:             64,
+		SymbolAlignment:            4,
+		MinSubSymbolAlignmentUnits: 16,
+	}, limits)
+	if err != nil {
+		panic(err)
+	}
+	encoder, err := raptorgo.NewObjectEncoder(object, oti, limits)
+	if err != nil {
+		panic(err)
+	}
+	otiWire, err := oti.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	digest := sha256.Sum256(object)
+
+	// Receiver: parse the announced OTI against local limits and refuse
+	// delivery unless the reconstructed object matches the announced digest.
+	receivedOTI, err := raptorgo.ParseOTI(otiWire, limits)
+	if err != nil {
+		panic(err)
+	}
+	decoder, err := raptorgo.NewObjectDecoder(
+		receivedOTI, limits, "transfer-42",
+		func(request raptorgo.VerificationRequest) error {
+			hash := sha256.New()
+			if _, copyErr := io.Copy(hash, request.Object); copyErr != nil {
+				return copyErr
+			}
+			if !bytes.Equal(hash.Sum(nil), digest[:]) {
+				return errors.New("SHA-256 digest mismatch")
+			}
+			return nil
+		},
+		func(verified raptorgo.VerifiedObject) error {
+			fmt.Printf("delivered %d verified bytes\n", len(verified.Bytes))
+			return nil
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	// Network: every fifth source packet is lost in transit.
+	k, err := raptorgo.SourceBlockSymbols(receivedOTI, 0)
+	if err != nil {
+		panic(err)
+	}
+	const shortenFinal = true
+	lost := uint32(0)
+	for esi := uint32(0); esi < k; esi++ {
+		if esi%5 == 4 {
+			lost++
+			continue
+		}
+		packet, packetErr := encoder.Packet(0, esi, 1, shortenFinal)
+		if packetErr != nil {
+			panic(packetErr)
+		}
+		if _, addErr := decoder.AddPacket(packet); addErr != nil {
+			panic(addErr)
+		}
+	}
+	// Repair symbols begin at ESI K; emit them until the decoder finishes.
+	repairs := uint32(0)
+	for esi := k; decoder.State() == raptorgo.ObjectReceiving; esi++ {
+		packet, packetErr := encoder.Packet(0, esi, 1, shortenFinal)
+		if packetErr != nil {
+			panic(packetErr)
+		}
+		if _, addErr := decoder.AddPacket(packet); addErr != nil {
+			panic(addErr)
+		}
+		repairs++
+	}
+	fmt.Printf("state=%s lost=%d repairs=%d\n", decoder.State(), lost, repairs)
+
+	// Output:
+	// delivered 4096 verified bytes
+	// state=delivered lost=12 repairs=12
 }
 
 // Example_lossRecovery loses one source packet in transit and recovers the

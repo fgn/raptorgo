@@ -12,23 +12,43 @@ import (
 // OTI.MarshalBinary and consumed by ParseOTI.
 const OTIEncodedSize = 12
 
-// OTI is the RFC 6330 FEC Object Transmission Information.
+// OTI is the RFC 6330 FEC Object Transmission Information: the parameter
+// contract between encoder and decoder. It travels out of band and must be
+// authenticated by the application before use.
 type OTI struct {
-	TransferLength  uint64
-	SymbolSize      uint16
-	SourceBlocks    uint8
-	SubBlocks       uint16
+	// TransferLength is F, the object size in bytes, at most
+	// MaxTransferLength. Zero describes a zero-length object.
+	TransferLength uint64
+	// SymbolSize is T, the encoding symbol size in bytes, 1 to 65535 and a
+	// multiple of SymbolAlignment.
+	SymbolSize uint16
+	// SourceBlocks is Z, the number of source blocks, 1 to 255.
+	SourceBlocks uint8
+	// SubBlocks is N, the number of sub-blocks per source block, 1 to 65535.
+	SubBlocks uint16
+	// SymbolAlignment is Al in bytes, 1 to 255; SymbolSize and every
+	// sub-symbol size are multiples of it.
 	SymbolAlignment uint8
 }
 
 // DerivationInput contains the inputs to the RFC 6330 Section 4.3 example
-// parameter derivation. MaxPayloadSize is P', DecoderBlockBytes is WS, and
-// MinSubSymbolAlignmentUnits is SS. P' must be a multiple of SymbolAlignment.
+// parameter derivation.
 type DerivationInput struct {
-	TransferLength             uint64
-	DecoderBlockBytes          uint64
-	MaxPayloadSize             uint16
-	SymbolAlignment            uint8
+	// TransferLength is F, the object size in bytes, at most
+	// MaxTransferLength.
+	TransferLength uint64
+	// DecoderBlockBytes is WS, the largest source-block size in bytes the
+	// receiver is willing to hold in working memory while decoding.
+	DecoderBlockBytes uint64
+	// MaxPayloadSize is P', the target packet payload size in bytes; it
+	// becomes the symbol size T and must be a nonzero multiple of
+	// SymbolAlignment.
+	MaxPayloadSize uint16
+	// SymbolAlignment is Al in bytes, 1 to 255. Symbol and sub-symbol sizes
+	// are multiples of it; 4 suits most transports.
+	SymbolAlignment uint8
+	// MinSubSymbolAlignmentUnits is SS: the smallest allowed sub-symbol is
+	// SS*Al bytes, which must not exceed MaxPayloadSize.
 	MinSubSymbolAlignmentUnits uint32
 }
 
