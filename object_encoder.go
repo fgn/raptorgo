@@ -206,13 +206,8 @@ func (encoder *ObjectEncoder) buildContiguousSourcePacket(
 	firstESI uint32,
 	packetBytes uint64,
 ) ([]byte, error) {
-	id := PayloadID{SourceBlockNumber: sourceBlockNumber, EncodingSymbolID: firstESI}
-	header, err := id.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
 	packet := make([]byte, int(packetBytes))
-	copy(packet, header)
+	writePayloadID(packet, sourceBlockNumber, firstESI)
 
 	totalSymbols := ceilDiv(encoder.oti.TransferLength, uint64(encoder.oti.SymbolSize))
 	blockPartition, err := rfc6330.Partition(totalSymbols, uint64(encoder.oti.SourceBlocks))
@@ -233,13 +228,8 @@ func (encoder *ObjectEncoder) buildSubBlockedSourcePacket(
 	if encoder.oti.SubBlocks < 2 {
 		return nil, fmt.Errorf("%w: sub-blocked packet path requires N >= 2", ErrObjectEncoder)
 	}
-	id := PayloadID{SourceBlockNumber: sourceBlockNumber, EncodingSymbolID: firstESI}
-	header, err := id.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
 	packet := make([]byte, int(packetBytes))
-	copy(packet, header)
+	writePayloadID(packet, sourceBlockNumber, firstESI)
 	payload := packet[PayloadIDEncodedSize:]
 
 	totalSymbols := ceilDiv(encoder.oti.TransferLength, uint64(encoder.oti.SymbolSize))
@@ -281,13 +271,8 @@ func (encoder *ObjectEncoder) buildRepairPacket(
 	firstESI, symbolCount uint32,
 	packetBytes uint64,
 ) ([]byte, error) {
-	id := PayloadID{SourceBlockNumber: sourceBlockNumber, EncodingSymbolID: firstESI}
-	header, err := id.MarshalBinary()
-	if err != nil {
-		return nil, err
-	}
 	packet := make([]byte, int(packetBytes))
-	copy(packet, header)
+	writePayloadID(packet, sourceBlockNumber, firstESI)
 	offset := PayloadIDEncodedSize
 	for index := uint32(0); index < symbolCount; index++ {
 		values, symbolErr := blockEncoder.Symbol(firstESI+index, uint64(encoder.oti.SymbolSize))

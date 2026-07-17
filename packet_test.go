@@ -346,8 +346,8 @@ func TestObjectEncoderContiguousSystematicPacketAllocations(t *testing.T) {
 			panic(packetErr)
 		}
 	})
-	if allocations > 2 {
-		t.Fatalf("contiguous systematic packet allocations = %.1f, want at most 2", allocations)
+	if allocations != 1 {
+		t.Fatalf("contiguous systematic packet allocations = %.1f, want exactly one owned result", allocations)
 	}
 	required := uint64(len(encoder.object)) + PayloadIDEncodedSize + uint64(oti.SymbolSize)
 	encoder.limits.MaxWorkingMemory = required
@@ -357,6 +357,24 @@ func TestObjectEncoderContiguousSystematicPacketAllocations(t *testing.T) {
 	encoder.limits.MaxWorkingMemory = required - 1
 	if packet, err := encoder.Packet(0, 50, 1, false); !errors.Is(err, ErrLimitExceeded) || packet != nil {
 		t.Fatalf("over-limit source packet=%x error=%v", packet, err)
+	}
+}
+
+func TestObjectEncoderSubBlockedSystematicPacketAllocations(t *testing.T) {
+	oti := OTI{TransferLength: 128_000, SymbolSize: 1_280, SourceBlocks: 1, SubBlocks: 4, SymbolAlignment: 1}
+	encoder, err := NewObjectEncoder(patternedObject(oti.TransferLength), oti, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocations := testing.AllocsPerRun(100, func() {
+		var packetErr error
+		packetAllocationSink, packetErr = encoder.Packet(0, 50, 1, false)
+		if packetErr != nil {
+			panic(packetErr)
+		}
+	})
+	if allocations != 1 {
+		t.Fatalf("sub-blocked systematic packet allocations = %.1f, want exactly one owned result", allocations)
 	}
 }
 

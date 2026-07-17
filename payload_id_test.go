@@ -1,6 +1,7 @@
 package raptorgo
 
 import (
+	"bytes"
 	"errors"
 	"testing"
 )
@@ -40,5 +41,25 @@ func TestPayloadIDBoundaries(t *testing.T) {
 	}
 	if _, err := ParsePayloadID([]byte{0, 1, 2}); !errors.Is(err, ErrInvalidPayloadID) {
 		t.Fatalf("short payload ID returned %v", err)
+	}
+}
+
+func TestWritePayloadIDMatchesMarshalBinary(t *testing.T) {
+	for _, id := range []PayloadID{
+		{},
+		{SourceBlockNumber: 1, EncodingSymbolID: 0xff},
+		{SourceBlockNumber: 127, EncodingSymbolID: 0x100},
+		{SourceBlockNumber: 254, EncodingSymbolID: 0xffff},
+		{SourceBlockNumber: 255, EncodingSymbolID: MaxEncodingSymbolID},
+	} {
+		want, err := id.MarshalBinary()
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := make([]byte, PayloadIDEncodedSize)
+		writePayloadID(got, id.SourceBlockNumber, id.EncodingSymbolID)
+		if !bytes.Equal(got, want) {
+			t.Fatalf("writePayloadID(%+v)=%x, want %x", id, got, want)
+		}
 	}
 }

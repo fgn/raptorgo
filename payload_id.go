@@ -36,6 +36,13 @@ func (id PayloadID) MarshalBinary() ([]byte, error) {
 	}, nil
 }
 
+func writePayloadID(encoded []byte, sourceBlockNumber uint8, encodingSymbolID uint32) {
+	encoded[0] = sourceBlockNumber
+	encoded[1] = byte(encodingSymbolID >> 16)
+	encoded[2] = byte(encodingSymbolID >> 8)
+	encoded[3] = byte(encodingSymbolID)
+}
+
 // ParsePayloadID decodes a four-octet RFC 6330 FEC Payload ID.
 func ParsePayloadID(encoded []byte) (PayloadID, error) {
 	if len(encoded) != PayloadIDEncodedSize {
