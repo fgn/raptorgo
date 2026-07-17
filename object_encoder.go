@@ -14,14 +14,16 @@ import (
 // source or repair packets. It retains at most one repair encoder cache and is
 // safe for concurrent Packet calls.
 type ObjectEncoder struct {
-	mu         sync.Mutex
-	oti        OTI
-	limits     Limits
-	object     []byte
-	cacheBlock uint8
-	cacheValid bool
-	cacheBytes uint64
-	cache      *codec.SourceBlockEncoder
+	mu                sync.Mutex
+	oti               OTI
+	limits            Limits
+	object            []byte
+	blockPartition    rfc6330.PartitionResult
+	subBlockPartition rfc6330.PartitionResult
+	cacheBlock        uint8
+	cacheValid        bool
+	cacheBytes        uint64
+	cache             *codec.SourceBlockEncoder
 }
 
 // ObjectEncoderWorkspaceBackingBytes returns the largest logical backing peak
@@ -84,8 +86,19 @@ func NewObjectEncoder(object []byte, oti OTI, limits Limits) (*ObjectEncoder, er
 			ErrLimitExceeded, required, limits.MaxWorkingMemory,
 		)
 	}
+	totalSymbols := ceilDiv(oti.TransferLength, uint64(oti.SymbolSize))
+	blockPartition, err := rfc6330.Partition(totalSymbols, uint64(oti.SourceBlocks))
+	if err != nil {
+		return nil, err
+	}
+	subSymbolUnits := uint64(oti.SymbolSize) / uint64(oti.SymbolAlignment)
+	subBlockPartition, err := rfc6330.Partition(subSymbolUnits, uint64(oti.SubBlocks))
+	if err != nil {
+		return nil, err
+	}
 	return &ObjectEncoder{
 		oti: oti, limits: limits, object: append([]byte(nil), object...),
+		blockPartition: blockPartition, subBlockPartition: subBlockPartition,
 	}, nil
 }
 
@@ -118,10 +131,11 @@ func (encoder *ObjectEncoder) Packet(
 		uint64(firstESI)+uint64(symbolCount)-1 > uint64(MaxEncodingSymbolID) {
 		return nil, fmt.Errorf("%w: SBN=%d ESI=%d count=%d", ErrInvalidPacket, sourceBlockNumber, firstESI, symbolCount)
 	}
-	k, err := SourceBlockSymbols(encoder.oti, sourceBlockNumber)
+	blockSymbols, err := encoder.blockPartition.Size(uint64(sourceBlockNumber))
 	if err != nil {
 		return nil, err
 	}
+	k := uint32(blockSymbols)
 	if k == 0 {
 		return nil, fmt.Errorf("%w: SBN %d is empty", ErrInvalidPacket, sourceBlockNumber)
 	}
@@ -210,12 +224,7 @@ func (encoder *ObjectEncoder) buildContiguousSourcePacket(
 	packet := make([]byte, int(packetBytes))
 	writePayloadID(packet, sourceBlockNumber, firstESI)
 
-	totalSymbols := ceilDiv(encoder.oti.TransferLength, uint64(encoder.oti.SymbolSize))
-	blockPartition, err := rfc6330.Partition(totalSymbols, uint64(encoder.oti.SourceBlocks))
-	if err != nil {
-		return nil, err
-	}
-	firstSymbol := sourceBlockFirstSymbol(blockPartition, uint64(sourceBlockNumber))
+	firstSymbol := sourceBlockFirstSymbol(encoder.blockPartition, uint64(sourceBlockNumber))
 	objectOffset := (firstSymbol + uint64(firstESI)) * uint64(encoder.oti.SymbolSize)
 	copyObjectRange(packet[PayloadIDEncodedSize:], encoder.object, objectOffset)
 	return packet, nil
@@ -233,24 +242,14 @@ func (encoder *ObjectEncoder) buildSubBlockedSourcePacket(
 	writePayloadID(packet, sourceBlockNumber, firstESI)
 	payload := packet[PayloadIDEncodedSize:]
 
-	totalSymbols := ceilDiv(encoder.oti.TransferLength, uint64(encoder.oti.SymbolSize))
-	blockPartition, err := rfc6330.Partition(totalSymbols, uint64(encoder.oti.SourceBlocks))
-	if err != nil {
-		return nil, err
-	}
-	firstSymbol := sourceBlockFirstSymbol(blockPartition, uint64(sourceBlockNumber))
+	firstSymbol := sourceBlockFirstSymbol(encoder.blockPartition, uint64(sourceBlockNumber))
 	blockStart := firstSymbol * uint64(encoder.oti.SymbolSize)
-	subSymbolUnits := uint64(encoder.oti.SymbolSize) / uint64(encoder.oti.SymbolAlignment)
-	subBlocks, err := rfc6330.Partition(subSymbolUnits, uint64(encoder.oti.SubBlocks))
-	if err != nil {
-		return nil, err
-	}
 
 	var inputOffset, symbolOffset uint64
 	for subBlock := range uint64(encoder.oti.SubBlocks) {
-		units := subBlocks.SmallSize
-		if subBlock < subBlocks.LargeCount {
-			units = subBlocks.LargeSize
+		units := encoder.subBlockPartition.SmallSize
+		if subBlock < encoder.subBlockPartition.LargeCount {
+			units = encoder.subBlockPartition.LargeSize
 		}
 		subSymbolBytes := units * uint64(encoder.oti.SymbolAlignment)
 		for packetSymbol := range symbolCount {
