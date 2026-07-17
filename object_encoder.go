@@ -151,32 +151,19 @@ func (encoder *ObjectEncoder) Packet(
 	}
 
 	if isSource {
+		if peakErr := checkSourcePacketPeak(
+			uint64(len(encoder.object)), 0, packetBytes, encoder.limits.MaxWorkingMemory,
+		); peakErr != nil {
+			return nil, peakErr
+		}
 		if encoder.oti.SubBlocks == 1 {
-			if peakErr := checkSourcePacketPeak(
-				uint64(len(encoder.object)), 0, packetBytes, encoder.limits.MaxWorkingMemory,
-			); peakErr != nil {
-				return nil, peakErr
-			}
 			return encoder.buildContiguousSourcePacket(
 				sourceBlockNumber, firstESI, packetBytes,
 			)
 		}
-		blockBytes := uint64(k) * uint64(encoder.oti.SymbolSize)
-		peak, peakErr := checkedObjectBacking(uint64(len(encoder.object)), blockBytes, packetBytes)
-		if peakErr != nil {
-			return nil, fmt.Errorf("source packet peak: %w", peakErr)
-		}
-		if peak > encoder.limits.MaxWorkingMemory {
-			return nil, fmt.Errorf(
-				"%w: source packet peak %d bytes (limit %d)",
-				ErrLimitExceeded, peak, encoder.limits.MaxWorkingMemory,
-			)
-		}
-		block, buildErr := BuildSourceBlock(encoder.object, encoder.oti, sourceBlockNumber, encoder.limits)
-		if buildErr != nil {
-			return nil, buildErr
-		}
-		return encoder.buildSourcePacket(block, firstESI, symbolCount, packetBytes)
+		return encoder.buildSubBlockedSourcePacket(
+			sourceBlockNumber, k, firstESI, symbolCount, packetBytes,
+		)
 	}
 
 	retained, err := codec.SourceBlockEncoderRetainedBackingBytes(k, uint32(encoder.oti.SymbolSize))
@@ -238,25 +225,52 @@ func (encoder *ObjectEncoder) buildContiguousSourcePacket(
 	return packet, nil
 }
 
-func (encoder *ObjectEncoder) buildSourcePacket(
-	block SourceBlock,
-	firstESI, symbolCount uint32,
+func (encoder *ObjectEncoder) buildSubBlockedSourcePacket(
+	sourceBlockNumber uint8,
+	k, firstESI, symbolCount uint32,
 	packetBytes uint64,
 ) ([]byte, error) {
-	id := PayloadID{SourceBlockNumber: block.Number(), EncodingSymbolID: firstESI}
+	if encoder.oti.SubBlocks < 2 {
+		return nil, fmt.Errorf("%w: sub-blocked packet path requires N >= 2", ErrObjectEncoder)
+	}
+	id := PayloadID{SourceBlockNumber: sourceBlockNumber, EncodingSymbolID: firstESI}
 	header, err := id.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
 	packet := make([]byte, int(packetBytes))
 	copy(packet, header)
-	offset := PayloadIDEncodedSize
-	for index := uint32(0); index < symbolCount; index++ {
-		values, symbolErr := block.Symbol(firstESI + index)
-		if symbolErr != nil {
-			return nil, symbolErr
+	payload := packet[PayloadIDEncodedSize:]
+
+	totalSymbols := ceilDiv(encoder.oti.TransferLength, uint64(encoder.oti.SymbolSize))
+	blockPartition, err := rfc6330.Partition(totalSymbols, uint64(encoder.oti.SourceBlocks))
+	if err != nil {
+		return nil, err
+	}
+	firstSymbol := sourceBlockFirstSymbol(blockPartition, uint64(sourceBlockNumber))
+	blockStart := firstSymbol * uint64(encoder.oti.SymbolSize)
+	subSymbolUnits := uint64(encoder.oti.SymbolSize) / uint64(encoder.oti.SymbolAlignment)
+	subBlocks, err := rfc6330.Partition(subSymbolUnits, uint64(encoder.oti.SubBlocks))
+	if err != nil {
+		return nil, err
+	}
+
+	var inputOffset, symbolOffset uint64
+	for subBlock := range uint64(encoder.oti.SubBlocks) {
+		units := subBlocks.SmallSize
+		if subBlock < subBlocks.LargeCount {
+			units = subBlocks.LargeSize
 		}
-		offset += copy(packet[offset:], values)
+		subSymbolBytes := units * uint64(encoder.oti.SymbolAlignment)
+		for packetSymbol := range symbolCount {
+			rawDestinationStart := uint64(packetSymbol)*uint64(encoder.oti.SymbolSize) + symbolOffset
+			destinationStart := min(rawDestinationStart, uint64(len(payload)))
+			destinationEnd := min(rawDestinationStart+subSymbolBytes, uint64(len(payload)))
+			sourceStart := blockStart + inputOffset + uint64(firstESI+packetSymbol)*subSymbolBytes
+			copyObjectRange(payload[int(destinationStart):int(destinationEnd)], encoder.object, sourceStart)
+		}
+		inputOffset += uint64(k) * subSymbolBytes
+		symbolOffset += subSymbolBytes
 	}
 	return packet, nil
 }

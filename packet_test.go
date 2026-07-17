@@ -360,6 +360,18 @@ func TestObjectEncoderContiguousSystematicPacketAllocations(t *testing.T) {
 	}
 }
 
+func TestSubBlockedSourcePacketRejectsContiguousLayout(t *testing.T) {
+	oti := OTI{TransferLength: 8, SymbolSize: 4, SourceBlocks: 1, SubBlocks: 1, SymbolAlignment: 1}
+	encoder, err := NewObjectEncoder(patternedObject(oti.TransferLength), oti, DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	packet, err := encoder.buildSubBlockedSourcePacket(0, 2, 0, 1, PayloadIDEncodedSize+4)
+	if !errors.Is(err, ErrObjectEncoder) || packet != nil {
+		t.Fatalf("sub-blocked path with N=1 returned packet=%x error=%v", packet, err)
+	}
+}
+
 func TestCheckSourcePacketPeakBoundaries(t *testing.T) {
 	if err := checkSourcePacketPeak(8, 0, 8, 16); err != nil {
 		t.Fatalf("exact peak rejected: %v", err)
