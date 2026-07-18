@@ -30,6 +30,7 @@ const (
 
 	tlcInitialStateMarker = "Finished computing initial states: 1 distinct state generated"
 	tlcSuccessMarker      = "Model checking completed. No error has been found."
+	tlcTraceRejectMarker  = "Error: Temporal property TraceComplete was violated."
 )
 
 // Command is one process invocation. Path and Dir are always absolute when
@@ -59,6 +60,7 @@ type Config struct {
 	Corpus     string
 	KeepFailed string
 	Jobs       int
+	Negative   bool
 	Exec       ExecFunc
 }
 
@@ -120,6 +122,9 @@ func Run(ctx context.Context, config Config) (Report, error) {
 	}
 	if len(inputs) == 0 {
 		return Report{}, fmt.Errorf("tracereplay: corpus %s contains no .ndjson files", resolved.corpus)
+	}
+	if config.Negative {
+		return runNegative(ctx, resolved, inputs)
 	}
 
 	report := Report{Inputs: make([]string, len(inputs))}
@@ -256,24 +261,53 @@ func replayOne(ctx context.Context, config resolvedConfig, input traceInput) *Fa
 	if closeErr != nil {
 		return &Failure{Input: input.name, Err: fmt.Errorf("close: %w", closeErr)}
 	}
+	return replayEvents(ctx, config, input.name, events, expectPositive)
+}
+
+type outcomeCheck func([]byte, error) error
+
+func expectPositive(output []byte, runErr error) error {
+	if runErr != nil {
+		return runErr
+	}
+	return validateTLCOutput(output)
+}
+
+func expectTraceRejected(output []byte, runErr error) error {
+	if runErr == nil {
+		return errors.New("mutated trace unexpectedly passed TLC")
+	}
+	if !bytes.Contains(output, []byte(tlcTraceRejectMarker)) {
+		return fmt.Errorf("mutated trace failed without exact marker %q: %w", tlcTraceRejectMarker, runErr)
+	}
+	return nil
+}
+
+func replayEvents(
+	ctx context.Context,
+	config resolvedConfig,
+	name string,
+	events []objtrace.Event,
+	check outcomeCheck,
+) *Failure {
 	blocks := *events[0].Blocks
 	data, err := objtrace.RenderTLA(replayDataModule, blocks, events)
 	if err != nil {
-		return &Failure{Input: input.name, Err: err}
+		return &Failure{Input: name, Err: err}
 	}
 
 	workdir, err := os.MkdirTemp("", "raptorgo-object-replay-")
 	if err != nil {
-		return &Failure{Input: input.name, Err: fmt.Errorf("create workdir: %w", err)}
+		return &Failure{Input: name, Err: fmt.Errorf("create workdir: %w", err)}
 	}
 	defer os.RemoveAll(workdir)
 	for _, source := range []string{config.replay, config.config, config.spec} {
 		if err := copyFile(source, filepath.Join(workdir, filepath.Base(source))); err != nil {
-			return &Failure{Input: input.name, Err: err}
+			return &Failure{Input: name, Err: err}
 		}
 	}
 	if err := os.WriteFile(filepath.Join(workdir, replayDataModule+".tla"), data, 0o644); err != nil {
-		return &Failure{Input: input.name, Err: fmt.Errorf("write replay data: %w", err)}
+		return &Failure{Input: name, Err: fmt.Errorf("write replay data: %w", err)}
 	}
 
 	command := Command{
@@ -282,13 +316,11 @@ func replayOne(ctx context.Context, config resolvedConfig, input traceInput) *Fa
 		Dir:  workdir,
 	}
 	output, runErr := config.execute(ctx, command)
-	if runErr == nil {
-		runErr = validateTLCOutput(output)
-		if runErr == nil {
-			return nil
-		}
+	outcomeErr := check(output, runErr)
+	if outcomeErr == nil {
+		return nil
 	}
-	failure := &Failure{Input: input.name, Err: fmt.Errorf("TLC: %w", runErr), Output: append([]byte(nil), output...)}
+	failure := &Failure{Input: name, Err: fmt.Errorf("TLC: %w", outcomeErr), Output: append([]byte(nil), output...)}
 	if config.keepFailed == "" {
 		return failure
 	}
@@ -296,7 +328,7 @@ func replayOne(ctx context.Context, config resolvedConfig, input traceInput) *Fa
 		failure.Err = errors.Join(failure.Err, fmt.Errorf("write TLC output: %w", writeErr))
 		return failure
 	}
-	keptAt, keepErr := preserveWorkdir(workdir, config.keepFailed, input.name+".replay")
+	keptAt, keepErr := preserveWorkdir(workdir, config.keepFailed, name+".replay")
 	if keepErr != nil {
 		failure.Err = errors.Join(failure.Err, keepErr)
 		return failure

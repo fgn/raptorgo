@@ -96,7 +96,7 @@ Apply(record) ==
     \/ /\ record.op = "block_complete"
        /\ record.result = "ok"
        /\ state = "receiving"
-       /\ completed < Blocks
+       /\ completed < Blocks - 1
        /\ completed' = completed + 1
        /\ UNCHANGED <<state, verification, delivery>>
     \/ /\ record.op = "verify_enter"
@@ -121,6 +121,7 @@ Apply(record) ==
        /\ record.bindingOK
        /\ state = "verified"
        /\ verification = 1
+       /\ delivery = 0
        /\ delivery' = delivery + 1
        /\ UNCHANGED <<state, completed, verification>>
     \/ /\ record.op = "decode_failure"

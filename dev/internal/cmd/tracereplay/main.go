@@ -17,6 +17,7 @@ func main() {
 	corpus := flag.String("corpus", "", "flat directory of positive NDJSON traces (default: repository corpus)")
 	jobs := flag.Int("j", 1, fmt.Sprintf("parallel TLC processes (1..%d)", tracereplay.MaxJobs))
 	keepFailed := flag.String("keep-failed", "", "directory in which to preserve failed replay workdirs")
+	negative := flag.Bool("negative", false, "require every applicable trace mutant to fail TraceComplete")
 	rootFlag := flag.String("root", "", "repository root (normally discovered from the current directory)")
 	flag.Parse()
 	if flag.NArg() != 0 {
@@ -45,10 +46,14 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	report, err := tracereplay.Run(ctx, tracereplay.Config{
-		Root: root, Corpus: corpusPath, KeepFailed: *keepFailed, Jobs: *jobs,
+		Root: root, Corpus: corpusPath, KeepFailed: *keepFailed, Jobs: *jobs, Negative: *negative,
 	})
 	if err == nil {
-		fmt.Printf("tracereplay: passed %d/%d traces\n", report.Passed, len(report.Inputs))
+		kind := "traces"
+		if *negative {
+			kind = "mutants"
+		}
+		fmt.Printf("tracereplay: passed %d/%d %s\n", report.Passed, len(report.Inputs), kind)
 		return
 	}
 
