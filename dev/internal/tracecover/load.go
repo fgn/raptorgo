@@ -11,6 +11,8 @@ import (
 	"github.com/fgn/raptorgo/dev/internal/objtrace"
 )
 
+const maxTraceFiles = 4096
+
 // LoadTraces recursively reads every .ndjson file below roots. Each supplied
 // source family is required to contain at least one trace, preventing an empty
 // directory from satisfying a coverage command vacuously.
@@ -25,12 +27,12 @@ func LoadTraces(source Source, roots []string) ([]Trace, error) {
 	seen := make(map[string]struct{})
 	for _, root := range roots {
 		root = filepath.Clean(root)
-		info, err := os.Stat(root)
+		info, err := os.Lstat(root)
 		if err != nil {
 			return nil, fmt.Errorf("tracecover: inspect %s %s: %w", source, root, err)
 		}
 		if !info.IsDir() {
-			if filepath.Ext(root) != ".ndjson" {
+			if filepath.Ext(root) != ".ndjson" || !info.Mode().IsRegular() {
 				return nil, fmt.Errorf("tracecover: %s input %s is not an .ndjson file", source, root)
 			}
 			absolute, err := filepath.Abs(root)
@@ -40,6 +42,9 @@ func LoadTraces(source Source, roots []string) ([]Trace, error) {
 			if _, exists := seen[absolute]; !exists {
 				seen[absolute] = struct{}{}
 				paths = append(paths, root)
+				if len(paths) > maxTraceFiles {
+					return nil, fmt.Errorf("tracecover: more than %d trace files", maxTraceFiles)
+				}
 			}
 			continue
 		}
@@ -50,6 +55,13 @@ func LoadTraces(source Source, roots []string) ([]Trace, error) {
 			if entry.IsDir() || filepath.Ext(path) != ".ndjson" {
 				return nil
 			}
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			if !info.Mode().IsRegular() {
+				return fmt.Errorf("trace input %s is not a regular file", path)
+			}
 			absolute, err := filepath.Abs(path)
 			if err != nil {
 				return err
@@ -59,6 +71,9 @@ func LoadTraces(source Source, roots []string) ([]Trace, error) {
 			}
 			seen[absolute] = struct{}{}
 			paths = append(paths, path)
+			if len(paths) > maxTraceFiles {
+				return fmt.Errorf("more than %d trace files", maxTraceFiles)
+			}
 			return nil
 		})
 		if err != nil {

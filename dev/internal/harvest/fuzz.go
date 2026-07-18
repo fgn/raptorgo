@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -15,7 +16,10 @@ import (
 	"github.com/fgn/raptorgo/dev/internal/tracecorpus"
 )
 
-const maxFuzzCorpusBytes = 1 << 20
+const (
+	maxFuzzCorpusBytes = 1 << 20
+	maxFuzzCorpusFiles = 4096
+)
 
 // FuzzCandidates replays the checked Go fuzz corpus and, when supplied, the
 // matching Go fuzz cache. The cache path must name this fuzz target's leaf
@@ -67,8 +71,15 @@ func fuzzCorpusPaths(corpus, cache string) ([]string, error) {
 }
 
 func filesBelow(root string) ([]string, error) {
+	rootInfo, err := os.Lstat(root)
+	if err != nil {
+		return nil, err
+	}
+	if !rootInfo.IsDir() {
+		return nil, fmt.Errorf("%s is not a directory", root)
+	}
 	var paths []string
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -78,7 +89,17 @@ func filesBelow(root string) ([]string, error) {
 		if strings.HasPrefix(entry.Name(), ".") {
 			return nil
 		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("seed %s is not a regular file", path)
+		}
 		paths = append(paths, path)
+		if len(paths) > maxFuzzCorpusFiles {
+			return fmt.Errorf("corpus has more than %d files", maxFuzzCorpusFiles)
+		}
 		return nil
 	})
 	return paths, err
@@ -90,9 +111,17 @@ type fuzzSeed struct {
 }
 
 func readFuzzSeed(path string) (fuzzSeed, error) {
-	content, err := os.ReadFile(path)
+	file, err := os.Open(path)
 	if err != nil {
-		return fuzzSeed{}, fmt.Errorf("harvest: read fuzz seed %s: %w", path, err)
+		return fuzzSeed{}, fmt.Errorf("harvest: open fuzz seed %s: %w", path, err)
+	}
+	content, readErr := io.ReadAll(io.LimitReader(file, maxFuzzCorpusBytes+1))
+	closeErr := file.Close()
+	if readErr != nil {
+		return fuzzSeed{}, fmt.Errorf("harvest: read fuzz seed %s: %w", path, readErr)
+	}
+	if closeErr != nil {
+		return fuzzSeed{}, fmt.Errorf("harvest: close fuzz seed %s: %w", path, closeErr)
 	}
 	if len(content) > maxFuzzCorpusBytes {
 		return fuzzSeed{}, fmt.Errorf("harvest: fuzz seed %s exceeds %d bytes", path, maxFuzzCorpusBytes)
