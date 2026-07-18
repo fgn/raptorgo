@@ -14,6 +14,7 @@ vars:
   OBJECT_DECODER_REDTEAM_MINIMIZED_SHA256: 870ea532e0f3155bd3d72e40c7c31ba59905835ab220906b7641741ae06b1a34
   OBJECT_DECODER_REDTEAM_FAILURE_SHA256: 44e1ba271ec2d9ec004783b5e31f5ed5d2e5d54dcf569bd0f5c1a32f89d9b064
   OBJECT_DECODER_REDTEAM_TRACE_SHA256: cbba3fa181816f762de2b8e580b7372192aa647bcbc22fe7a7193d574948497f
+  OBJECT_DECODER_REDTEAM_PATCH_SHA256: 1a92b24c957a377122cecb46225353106545fabff91f8ce8d4f1acaa904ad92a
   OBJECT_DECODER_MUTANT_COUNT: 284
   OBJECT_DECODER_MUTANTS_SHA256: 3eaaf79ca3fb530dc83bc9b66c288698ba69d6ec3b7224cd18ed0ae58c5c0e7b
   LIBRAPTORQ_COMMIT: a394b22af6e8fc742ce88eacf9af5343ecded9d7
@@ -593,6 +594,8 @@ tasks:
           dev/formal/redteam/object-verified/failure.json | sha256sum -c -
         printf '%s  %s\n' '{{.OBJECT_DECODER_REDTEAM_TRACE_SHA256}}' \
           dev/formal/redteam/object-verified/trace/bug.ndjson | sha256sum -c -
+        printf '%s  %s\n' '{{.OBJECT_DECODER_REDTEAM_PATCH_SHA256}}' \
+          dev/formal/redteam/object-verified/fault.patch | sha256sum -c -
         temporary=$(mktemp -d)
         trap 'rm -rf "$temporary"' EXIT
         mkdir "$temporary/repo"
