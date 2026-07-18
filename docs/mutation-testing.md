@@ -24,16 +24,21 @@ every source mutation.
 The gate deliberately does not use coverage filtering or per-test selection.
 Go coverage cannot mark constant declarations as executed, and these constants
 include security and wire bounds worth mutating. Every non-equivalent mutant in
-the curated scope must be killed; the committed baseline contains only the
-three reviewed equivalent mutants described below. The raw MSI must remain at
-least 98 percent, and any new survivor fails the task.
+the curated scope must be killed; within the curated files the committed
+baseline contains only the three reviewed equivalent mutants described below.
+The raw MSI must remain at least 98 percent, and any new survivor fails the
+task.
 
 `task mutation:changed` applies the broad operator set only to lines changed
 from `HEAD`, or from the ref named by `MUTATION_DIFF_BASE`. It uses coverage
 and per-test selection for speed and fails on every new survivor. Set the base
 to the pull request's merge base when the branch contains multiple commits.
 Git cannot select untracked lines, so add new source files to the index before
-running this tier.
+running this tier. `mutation.sh` forces standard `a/`-`b/` git diff prefixes
+because the changed-line filter parses `+++ b/<path>` headers; user-level
+`diff.mnemonicPrefix` or `diff.noprefix` configuration would otherwise empty
+the filter and silently pass the gate. Equivalent survivors accepted from this
+tier are recorded in the baseline and documented below by class.
 
 `task mutation:audit` is a scheduled/manual discovery campaign over all
 hand-written runtime source. It excludes tests, command-line development
@@ -57,8 +62,24 @@ The baseline is intentionally tiny and reviewed by stable mutant ID:
 | `64a676bc87479142a23d42c2f00c50e0` | Return octet 1 instead of 0 with `ok=false` from `Inv(0)`. | The octet is explicitly undefined when `ok` is false and must not be consumed. |
 | `0c01f436f4aa833019d778a3b235504a` | Return size 1 instead of 0 with a non-nil partition-index error. | The size is undefined on error and must not be consumed. |
 
-Never update `dev/mutation/baseline.json` automatically in CI. A proposed entry
-must include its exact diff and a behavioral-equivalence explanation here.
+## Accepted changed-line survivors (July 2026 hot-loop optimization)
+
+The 2026-07 kernel/executor optimization round added 38 reviewed entries,
+grouped here by class because the underlying diffs are mechanical single-token
+mutations of the listed lines:
+
+| Location | Classes | Why behavior is unchanged |
+| --- | --- | --- |
+| `internal/matrix/hybrid_binary.go` `AppendDenseOnes` word loop (lines 389-395, 26 entries) | arithmetic, bitwise, numbers, branch/conditional, expression | The first-word and last-word masks and their index arithmetic guard bits below `firstSlot` and at or above `maxDense`. Those bits are provably always zero: `SetInitialDense` only writes the initial dense suffix, `FreezeNext` only writes slots at or above the current `firstSlot`, and XOR preserves zeros. The masks are defensive against future write paths; mutating them cannot change output today. `ForEachDenseOne` carries the identical defensive masks. |
+| `internal/codec/hybrid_execute.go` lines 254, 344 (4 entries) | comparison, numbers | `plan.parameters.H > 0` fast-path guards. Valid RFC 6330 parameters have `H >= 10`, so `>= 0` gathers redundantly with identical results and `> 1` can never skip a reachable case. |
+| `internal/codec/hybrid_execute.go` lines 256, 262, 270, 316, 325 (5 entries) | error-guard | Guards on `AppendDenseOnes`, `PhysicalColumn`, and `RowView` calls that cannot fail for a validated plan on a finalized matrix; the guards are defensive depth. |
+| `internal/codec/hybrid_execute.go` line 280 (2 entries) | statement, numbers | `hdpcValues[pivotColumn] = 0` canonicalizes an eliminated column. Pivot columns occupy logical positions below `finalI` after their step, and later reads touch only later pivot columns and logical columns at or above `finalI`, so the zeroed cell is never read again. The canonical state is separately pinned by the dev-module differential trace gates. |
+| `internal/codec/hybrid_execute.go` line 188 (1 entry) | arithmetic | The gather scratch capacity hint. A larger capacity changes only the size of one allocation; correctness never depends on it, and a too-small capacity is killed by the equivalence and workspace tests. |
+
+Never update `dev/mutation/baseline.json` automatically in CI. A proposed
+curated-scope entry must include its exact diff and a behavioral-equivalence
+explanation here; mechanically related changed-line survivors may be
+documented as a class with their lines and one shared equivalence argument.
 Deleting production behavior or weakening an invariant is not equivalent
 merely because another gate happens to catch it.
 

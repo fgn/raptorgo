@@ -4,36 +4,20 @@
 [![CI](https://github.com/fgn/raptorgo/actions/workflows/ci.yml/badge.svg)](https://github.com/fgn/raptorgo/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-`raptorgo` is a bounded, pure-Go implementation of the RaptorQ forward error
-correction scheme in [RFC 6330](https://www.rfc-editor.org/rfc/rfc6330.html).
-The runtime package has no CGo or third-party dependencies.
+RaptorQ ([RFC 6330](https://www.rfc-editor.org/rfc/rfc6330.html)) forward
+error correction in pure Go. No CGo, no dependencies.
 
-RaptorQ solves one problem well: delivering an object over a lossy one-way
-channel without retransmission. The sender turns the object into a stream of
-equal-sized encoding packets; the receiver reconstructs the object from
-(almost exactly) any subset whose size matches the original — regardless of
-which packets were lost. Reception overhead is typically zero to two extra
-packets per block.
+Deliver an object over a lossy one-way channel without retransmission: the
+sender emits equal-sized packets, and the receiver rebuilds the object from
+roughly any K of them, no matter which were lost. Typical overhead is zero to
+two extra packets per block.
 
-## When to use it
-
-Reach for RaptorQ instead of fixed-rate erasure codes such as Reed–Solomon
-shards when:
-
-- **The loss rate is unknown or varies.** Reed–Solomon fixes n and k up
-  front; RaptorQ generates fresh repair packets on demand (a 24-bit symbol ID
-  space per block), so the sender adapts redundancy live or cycles a data
-  carousel indefinitely.
-- **Blocks are large.** GF(256) Reed–Solomon tops out at 256 shards; a
-  RaptorQ source block spans up to 56,403 symbols, and an object up to 255
-  blocks.
-- **Receivers join independently.** Multicast or broadcast receivers each
-  lose different packets; any of them completes once it has collected
-  roughly K packets of each block.
-
-Prefer plain retransmission (TCP/QUIC) when you have a low-latency return
-channel, and fixed Reed–Solomon shards when the shard count is small and
-static (for example, striping across disks).
+Compared to fixed-rate Reed-Solomon shards, RaptorQ generates fresh repair
+packets on demand (so redundancy adapts to unknown or varying loss), scales to
+56,403 symbols per block and 255 blocks per object, and lets multicast
+receivers with different losses each complete independently. If you have a
+low-latency return channel, use TCP/QUIC instead; if your shard count is small
+and static, plain Reed-Solomon is simpler.
 
 ## Install
 
@@ -41,18 +25,16 @@ static (for example, striping across disks).
 go get github.com/fgn/raptorgo
 ```
 
-Requires Go 1.26 or newer. Pure Go on every platform; CI runs amd64, 386,
-race, and checkptr gates.
+Go 1.26 or newer. Pure Go on every platform.
 
 ## Quickstart
 
-A complete transfer: the 12-byte OTI (the codec parameters) and a SHA-256
-digest travel over an authenticated out-of-band channel, encoding packets
-travel over the lossy channel, and the receiver delivers the object only
-after the digest verifies.
+Publish the 12-byte OTI (codec parameters) and a digest over an authenticated
+channel; send packets over the lossy one. The decoder delivers only after
+your verifier accepts the reconstructed bytes.
 
 ```go
-// Sender: derive parameters, build the encoder, publish OTI + digest.
+// Sender
 limits := raptorgo.DefaultLimits()
 oti, err := raptorgo.DeriveOTI(raptorgo.DerivationInput{
     TransferLength:             uint64(len(object)),
@@ -65,7 +47,7 @@ encoder, err := raptorgo.NewObjectEncoder(object, oti, limits)
 otiWire, err := oti.MarshalBinary()
 digest := sha256.Sum256(object)
 
-// Receiver: parse the OTI against local limits; verify before delivery.
+// Receiver
 receivedOTI, err := raptorgo.ParseOTI(otiWire, limits)
 decoder, err := raptorgo.NewObjectDecoder(receivedOTI, limits, "transfer-42",
     func(request raptorgo.VerificationRequest) error {
@@ -98,199 +80,75 @@ for esi := k; decoder.State() == raptorgo.ObjectReceiving; esi++ {
 // decoder.State() == raptorgo.ObjectDelivered
 ```
 
-Allocation-sensitive senders can use `PacketInto` to write packets into a
-reusable caller buffer instead of receiving an owned allocation per call.
-Runnable versions of both patterns live in the
-[package examples](https://pkg.go.dev/github.com/fgn/raptorgo#pkg-examples)
-and in [`examples/roundtrip`](examples/roundtrip/main.go), a standalone
-program that simulates a lossy channel end to end:
+Run a complete transfer over a simulated lossy channel:
 
 ```sh
 go run ./examples/roundtrip -size 1048576 -mtu 1280 -loss 10
 ```
 
-[`docs/transport.md`](docs/transport.md) covers integration with a real
-transport: framing, ESI ranges, repair emission strategies, and resource
-limits.
+Next steps: the runnable
+[package examples](https://pkg.go.dev/github.com/fgn/raptorgo#pkg-examples),
+[`docs/transport.md`](docs/transport.md) for framing and repair strategies,
+and `PacketInto` for allocation-free packet emission on hot paths.
 
-Callers may also supply an OTI chosen by their content-delivery protocol;
-`DeriveOTI` implements the RFC's recommended example algorithm rather than a
-mandatory transport policy. `DefaultLimits` is conservative application
-policy, while `RFCWireLimits` admits the full wire domain for parsing and
-conformance work.
+## Performance
 
-## Trust boundary
+Single-threaded scalar Go decodes 12.8 MB with ten percent loss in about a
+second (AMD Ryzen 5 3600); systematic packets cost about 80 ns each with a
+reused buffer. The opt-in AVX2 build (`GOEXPERIMENT=simd`, amd64, runtime
+scalar fallback) is over 4x faster end to end: 117.5 ms encode and 112.2 ms
+decode for the same 12.8 MB workload on an i9-14900HX. Measured tables and
+reproduction commands are in [`docs/performance.md`](docs/performance.md).
 
-FEC repairs erasures; it does not authenticate hostile packets or
-reconstructed bytes. The public decoder deliberately requires both a verifier
-and a deliverer and enforces `decoded -> verified -> delivered`: FEC success
-alone never triggers delivery. Authenticate the OTI and the object digest out
-of band, protect packet integrity in transit when the network is hostile, and
-treat the verifier as the last line of defense. All decoder resources are
-bounded by explicit `Limits` checked before allocation, so a forged OTI is
-refused before it can consume memory. See [SECURITY.md](SECURITY.md) for the
-threat model.
+## Safety and limits
 
-## Performance and practical limits
+FEC repairs erasures; it authenticates nothing. The decoder therefore
+requires a verifier and a deliverer and enforces decoded, then verified, then
+delivered: FEC success alone never releases bytes. All decoder memory is
+preflighted against explicit `Limits`, so a forged OTI is refused before it
+can consume resources. The API is in-memory (not streaming); one block spans
+at most 56,403 symbols; transfers cap at 942,574,504,275 bytes. Threat model:
+[SECURITY.md](SECURITY.md).
 
-Systematic packets are emitted in well under a microsecond regardless of
-block size (about 80 ns with a reused `PacketInto` buffer), cached repair
-symbols cost a few microseconds each at T=1280, the one-time repair plan per
-block builds at 13–21 MB/s of object bytes, and end-to-end decoding with ten
-percent loss runs at 11–19 MB/s (AMD Ryzen 5 3600, go1.26.5, single-threaded,
-scalar GF(256)). Measured tables, the exact reproduction command, and
-block-size guidance are in [`docs/performance.md`](docs/performance.md).
+## Correctness
 
-On amd64, Go 1.26's experimental `simd/archsimd` API enables an opt-in AVX2
-path with a runtime scalar fallback. On an Intel Core i9-14900HX the paired
-K=10,000 construct-plus-repair median is 117.5 ms and the ten-percent-loss
-decode median is 112.2 ms, versus 487.4 ms and 509.2 ms for the same-commit
-scalar build. Run `task test:simd` and `task bench:simd`; the API remains
-experimental and is not enabled in default builds. Exact methodology is in
-[`dev/perf/simd-optimization-log.md`](dev/perf/simd-optimization-log.md).
-
-Practical limits: the API is in-memory — object-sized buffers on both ends,
-preflighted against `Limits` — not a streaming file API; one source block
-spans at most 56,403 symbols; transfers are capped at 942,574,504,275 bytes
-(RFC erratum 5548 applied).
-
-## Implemented behavior
-
-The implementation covers:
-
-- RFC Section 4.3 parameter derivation and canonical 12-byte OTI handling;
-- source-block and sub-block partitioning for `Z >= 1` and `N >= 1`;
-- grouped source and repair packets, including legal shortened source symbols;
-- the complete RFC parameter tables, `Rand`, `Deg`, `Tuple`, and ESI/ISI map;
-- systematic and arbitrary repair encoding through K=56,403;
-- bounded hybrid binary/HDPC inactivation decoding through K=56,403;
-- incremental multi-block object recovery with loss, reorder, and duplicates;
-- an explicit `decoded -> verified -> delivered` trust boundary; and
-- checked limits for packet, retained-symbol, attempt, dense-completion, and
-  aggregate logical backing allocations.
-
-## Correctness evidence and methodology
-
-The implementation is checked in independent layers:
-
-1. strict extraction and SHA-256 pinning of the RFC and its normative tables;
-2. exhaustive GF(256), mapping, tuple-domain, and structural invariants;
-3. dense algebraic oracles against the bounded production hybrid solver;
-4. byte-identical Rust parity through K=56,403 and selected `T=255` cases;
-5. bidirectional Rust cross-decoding for grouped/shortened, multi-block,
-   multi-sub-block, source-loss, and grouped-repair frames;
-6. bidirectional C++ cross-decoding in the K=10/12/48 consensus domain for
-   repair-only, mixed loss/reorder/duplicate, and deficient sets;
-7. independent rank-sufficiency checks and a bounded preregistered Section 5.8
-   K'=10 fixed-pool recovery profile, explicitly not an all-row proof;
-8. bounded TLA+ models plus production-derived positive traces and forged or
-   deleted negative traces; and
-9. a pinned mutation-testing gate over critical resource, wire, GF(256), and
-   partition kernels, plus broader changed-line and scheduled audits.
-
-The public object decoder additionally carries a data-driven trace pipeline:
-every committed harvested execution replays through the TLA+ trace
-specification with machine-generated mutants that must be rejected exactly,
-the closed action manifest must be fully covered, and model-derived schedules
-drive the production decoder so that every edge of two exact bounded
-`ObjectDecoderModel` graph dumps has a realizable witness. The precise claim
-is edge coverage of those finite dumps — not exploration of every model
-behavior or production execution. Current counts and reproduction commands
-are pinned in [`docs/invariants.md`](docs/invariants.md) and the
-[`dev/formal` documentation](https://github.com/fgn/raptorgo/blob/main/dev/formal/README.md).
-
-RFC Editor erratum 5548 is applied: the maximum transfer length is
-`942574504275`.
-
-That evidence has limits. The TLA+ models and trace replays establish
-bounded safety properties of abstractions and of recorded executions,
-with negative controls proving the checks are not vacuous; differential
-vectors establish byte-identical behavior on the domains actually
-compared; exhaustive tests cover exactly the finite domains they
-enumerate (GF(256) algebra, parameter tables, ESI/ISI maps); and the
-Section 5.8 recovery profile is a
-preregistered, bounded statistical measurement, explicitly not a proof
-over every RFC row and ESI. None of this amounts to a machine-checked
-proof of functional correctness of the Go implementation, and no such
-claim is made.
-
-The lifecycle trace/model oracles are also not RFC 6330 byte-level oracles.
-RFC source pinning, table extraction, algebraic checks, rank tests, and the
-Rust/C++ comparisons own that boundary; trace validation owns ordering,
-terminal-state, callback-binding, and model-to-production witness claims.
-
-The compact evidence index is in [`docs/invariants.md`](docs/invariants.md).
-Recovery statistics and their explicit limits are in
-[`docs/recovery.md`](docs/recovery.md). TLA scope is documented in
-the [`dev/formal` repository documentation](https://github.com/fgn/raptorgo/blob/main/dev/formal/README.md),
-and the reproducible ObjectDecoder measurements, hashes, and exact failure
-messages are in
-[`dev/formal/trace-validation-log.md`](dev/formal/trace-validation-log.md).
+The full RFC surface is implemented and tested through K=56,403: parameter
+derivation and OTI handling, block and sub-block partitioning, grouped and
+shortened packets, systematic and repair encoding, and multi-block recovery
+under loss, reordering, and duplicates. Evidence comes from independent
+layers: exhaustive algebra and table tests against the pinned RFC,
+byte-identical Rust and C++ cross-decoding, dense algebraic oracles against
+the production solver, bounded TLA+ models with production trace replay, and
+pinned mutation-testing gates. This is strong layered evidence, not a
+machine-checked proof of the Go code, and no such claim is made. The exact
+claim-to-evidence map is in [`docs/invariants.md`](docs/invariants.md),
+recovery statistics in [`docs/recovery.md`](docs/recovery.md), and formal
+scope in the [`dev/formal` documentation](https://github.com/fgn/raptorgo/blob/main/dev/formal/README.md).
 
 ## Development
 
-```sh
-task test
-task test:386
-task test:race
-task mutation:gate
-task verify
-task oracle:test
-task test:release
-task bench
-```
+`task ci` runs the local correctness suite; see the Taskfile for the full
+gate list. Rust, C++, and TLA+ are development-time oracles behind the nested
+`dev` module and never touch production builds or module downloads.
+Contribution and evidence expectations are in
+[CONTRIBUTING.md](CONTRIBUTING.md); mutation policy in
+[`docs/mutation-testing.md`](docs/mutation-testing.md). End-to-end validation
+lives in the companion repository
+[`raptorgo-e2e`](https://github.com/fgn/raptorgo-e2e).
 
-`task ci` runs the ordinary local correctness suite. Rust and C++ are
-development-time oracles only and are never linked into production Go code.
-All formal, oracle, mutation, generator, and specification inputs live behind
-the nested `dev` module boundary, so normal imports and module downloads do not
-include them or invoke Cargo, C++, Java, TLA+, Task, or network fetches.
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the change-evidence expectations
-and [SECURITY.md](SECURITY.md) for the threat model and reporting channel.
-Mutation scope and baseline policy are in
-[`docs/mutation-testing.md`](docs/mutation-testing.md).
+## Attribution and license
 
-End-to-end validation is maintained in the companion repository
-[`raptorgo-e2e`](https://github.com/fgn/raptorgo-e2e), which builds a
-file-transfer tool and a lossy-network test suite exclusively on this
-module's public API.
-
-## Attribution and research status
-
-RaptorQ is not our invention. Raptor codes are the work of Amin
-Shokrollahi, building on Michael Luby's LT fountain codes; RaptorQ was
-developed at Digital Fountain and Qualcomm and standardized by the IETF as
-[RFC 6330](https://www.rfc-editor.org/rfc/rfc6330.html), authored by
-M. Luby, A. Shokrollahi, M. Watson, T. Stockhammer, and L. Minder. This
-repository is an independent implementation of that specification and
-claims no rights in the RaptorQ code, the RaptorQ name, or the underlying
-technology. Any defects in this implementation are this project's own.
-
-The project is a research effort in applying formal-methods and
-differential-verification techniques to a protocol implementation. It
-should not be read as "formally verified." The TLA+ artifacts
-model-check bounded abstractions of selected subsystems, replay
-production-generated traces against those models, and drive model-derived
-schedules back through the public decoder; they check finite safety
-properties of models, recorded traces, and bounded witness schedules, not
-the compiled Go code, and establish no liveness of the real
-implementation. The exact
-claim-to-evidence map is in [`docs/invariants.md`](docs/invariants.md),
-the formal scope and its limits in the
-[`dev/formal` repository documentation](https://github.com/fgn/raptorgo/blob/main/dev/formal/README.md),
-and the bounded recovery statistics in
-[`docs/recovery.md`](docs/recovery.md).
-
-## License
+RaptorQ is the work of Amin Shokrollahi, Michael Luby, and their
+collaborators, standardized by the IETF as RFC 6330. This repository is an
+independent implementation and claims no rights in the RaptorQ name or
+technology; any defects are this project's own.
 
 Copyright 2026 FGN Research and Development B.V. Licensed under the
-[Apache License 2.0](LICENSE). Third-party material distributed with this
-repository is listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[Apache License 2.0](LICENSE); third-party material is listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-**Patent notice.** RaptorQ is specified by RFC 6330, for which intellectual
-property rights disclosures have been filed with the IETF (see the
-[IETF IPR disclosures for RFC 6330](https://datatracker.ietf.org/ipr/search/?rfc=6330&submit=rfc)).
-The Apache-2.0 license grants patent rights only from this project's
-contributors; it cannot and does not grant rights to any third-party
-patents. Evaluate your own use accordingly; this notice is information,
-not legal advice.
+**Patent notice.** IETF IPR disclosures exist for RFC 6330 (see the
+[disclosure search](https://datatracker.ietf.org/ipr/search/?rfc=6330&submit=rfc)).
+Apache-2.0 grants patent rights only from this project's contributors and
+cannot grant rights to third-party patents. Evaluate your own use; this is
+information, not legal advice.

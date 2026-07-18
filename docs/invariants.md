@@ -84,7 +84,7 @@ The following invariants are executable gates:
 | CODEC-3 | Go/Rust outputs match over the committed ordinary, release, and object corpora; Go/Rust/C++ output equality is limited to the C++ K=10/12/48 consensus domain, with K=49 repair divergence retained as a negative control. | Committed differential corpora with exact artifact digests. |
 | CODEC-4 | Every independently rank-sufficient received system decodes. | Independent polynomial-rank oracle across eleven bounded Table 2 sizes and overheads 0/1/2, plus large hybrid loss/repair release cases. |
 | CODEC-5 | Observed recovery rates are characterized against RFC 6330 Section 5.8 within an explicit bounded population. | Golden preregistered K'=10 fixed-65,536-ESI-pool profile with 100,000/100,000/3,000,000 trials and one-sided 95% confidence bounds; it does not establish the all-477-row SHALL property. |
-| MUT-1 | Tests reject plausible boundary, arithmetic, branch, return-value, and error-handling defects in the curated resource/wire/GF/partition kernels. | Pinned `go-mutesting/v2` CI gate with all non-equivalent mutants killed, a reviewed three-mutant equivalence baseline, and separate changed-line and broad agent-reporting campaigns. |
+| MUT-1 | Tests reject plausible boundary, arithmetic, branch, return-value, and error-handling defects in the curated resource/wire/GF/partition kernels. | Pinned `go-mutesting/v2` CI gate with all non-equivalent mutants killed, a reviewed equivalence baseline (three curated-scope mutants plus class-documented changed-line survivors), and separate changed-line and broad agent-reporting campaigns. |
 
 ## Evidence policy
 
