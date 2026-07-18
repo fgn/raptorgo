@@ -58,6 +58,7 @@ func Parse(reader io.Reader) (Graph, error) {
 	lineNumber := 0
 	depth := 0
 	sawHeader, sawCluster, closed := false, false, false
+	layoutIDs := make([]string, 0)
 	for scanner.Scan() {
 		lineNumber++
 		line := strings.TrimSpace(scanner.Text())
@@ -89,11 +90,24 @@ func Parse(reader io.Reader) (Graph, error) {
 			closed = depth == 0
 			continue
 		}
-		if depth == 1 && (strings.HasPrefix(line, "node [") || strings.HasPrefix(line, "nodesep=")) {
-			continue
+		if depth == 1 {
+			switch line {
+			case "node [shape=box,style=rounded]", "nodesep=0.35;":
+				continue
+			}
 		}
-		if depth == 2 && (strings.HasPrefix(line, "color=") || strings.HasPrefix(line, "{rank = same;")) {
-			continue
+		if depth == 2 {
+			if line == `color="white";` {
+				continue
+			}
+			if strings.HasPrefix(line, "{rank") {
+				ids, err := parseRankStatement(line)
+				if err != nil {
+					return Graph{}, fmt.Errorf("dotparse: line %d: %w", lineNumber, err)
+				}
+				layoutIDs = append(layoutIDs, ids...)
+				continue
+			}
 		}
 		if depth != 2 {
 			return Graph{}, fmt.Errorf("dotparse: line %d: statement outside cluster", lineNumber)
@@ -120,6 +134,9 @@ func Parse(reader io.Reader) (Graph, error) {
 		label, ok := parsedAttributes["label"]
 		if !ok {
 			return Graph{}, fmt.Errorf("dotparse: line %d: missing label attribute", lineNumber)
+		}
+		if err := validateNodeAttributes(parsedAttributes); err != nil {
+			return Graph{}, fmt.Errorf("dotparse: line %d: %w", lineNumber, err)
 		}
 		state, err := parseState(label)
 		if err != nil {
@@ -148,6 +165,11 @@ func Parse(reader io.Reader) (Graph, error) {
 		}
 		if _, ok := graph.States[edge.Dst]; !ok {
 			return Graph{}, fmt.Errorf("dotparse: edge destination %s has no node", edge.Dst)
+		}
+	}
+	for _, id := range layoutIDs {
+		if _, ok := graph.States[id]; !ok {
+			return Graph{}, fmt.Errorf("dotparse: rank references unknown node %s", id)
 		}
 	}
 	for id := range graph.States {
@@ -195,7 +217,28 @@ func parseEdge(line string) (Edge, error) {
 	if err := validateActionLabel(label); err != nil {
 		return Edge{}, err
 	}
+	if err := validateEdgeAttributes(parsedAttributes); err != nil {
+		return Edge{}, err
+	}
 	return Edge{Src: left, Dst: right, Action: label}, nil
+}
+
+func parseRankStatement(line string) ([]string, error) {
+	const prefix = "{rank = same; "
+	if !strings.HasPrefix(line, prefix) || !strings.HasSuffix(line, ";}") {
+		return nil, fmt.Errorf("invalid rank statement %q", line)
+	}
+	body := strings.TrimSuffix(strings.TrimPrefix(line, prefix), ";}")
+	parts := strings.Split(body, ";")
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("empty rank statement %q", line)
+	}
+	for _, id := range parts {
+		if !validSignedDecimal(id) {
+			return nil, fmt.Errorf("invalid rank node id %q", id)
+		}
+	}
+	return parts, nil
 }
 
 func parseNodeStatement(line string) (string, string, bool, error) {
@@ -345,6 +388,39 @@ func parseAttributes(input string) (map[string]string, error) {
 			return nil, fmt.Errorf("attribute %s has trailing text %q", name, input[offset:])
 		}
 	}
+}
+
+func validateNodeAttributes(attributes map[string]string) error {
+	for name := range attributes {
+		switch name {
+		case "label", "style", "tooltip":
+		default:
+			return fmt.Errorf("unsupported node attribute %s", name)
+		}
+	}
+	if style, ok := attributes["style"]; ok && style != "filled" {
+		return fmt.Errorf("unsupported node style %q", style)
+	}
+	if tooltip, ok := attributes["tooltip"]; ok && tooltip != attributes["label"] {
+		return errors.New("node tooltip does not match label")
+	}
+	return nil
+}
+
+func validateEdgeAttributes(attributes map[string]string) error {
+	for name := range attributes {
+		switch name {
+		case "label", "color", "fontcolor":
+		default:
+			return fmt.Errorf("unsupported edge attribute %s", name)
+		}
+	}
+	for _, name := range []string{"color", "fontcolor"} {
+		if value, ok := attributes[name]; ok && value != "black" {
+			return fmt.Errorf("unsupported edge %s %q", name, value)
+		}
+	}
+	return nil
 }
 
 func validateActionLabel(label string) error {

@@ -114,12 +114,37 @@ subgraph cluster_graph {
 1 [label="/\\ state = \"receiving\"",notstyle=filled];
 }
 }`
-	graph, err := Parse(strings.NewReader(notStyle))
+	if _, err := Parse(strings.NewReader(notStyle)); err == nil || !strings.Contains(err.Error(), "unsupported node attribute") {
+		t.Fatalf("notstyle error = %v", err)
+	}
+}
+
+func TestParseRejectsUnsupportedDOTSurface(t *testing.T) {
+	encoded, err := os.ReadFile("testdata/object-decoder-model-a.dot")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(graph.Inits) != 0 {
-		t.Fatalf("notstyle marked initial states: %v", graph.Inits)
+	valid := string(encoded)
+	tests := []struct {
+		name, old, replacement string
+	}{
+		{"node defaults", "node [shape=box,style=rounded]", "node [shape=box,evil=true]"},
+		{"node separation", "nodesep=0.35;", "nodesep=99;"},
+		{"cluster color", `color="white";`, `color="red";`},
+		{"rank grammar", "{rank = same; -7026174232243225298;}", "{rank = maybe; -7026174232243225298;}"},
+		{"node attribute", ",style = filled]", ",style = filled,evil=true]"},
+		{"edge attribute", `,color="black",fontcolor="black"]`, `,color="black",fontcolor="black",evil="true"]`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input := strings.Replace(valid, test.old, test.replacement, 1)
+			if input == valid {
+				t.Fatalf("fixture does not contain %q", test.old)
+			}
+			if _, err := Parse(strings.NewReader(input)); err == nil {
+				t.Fatal("unsupported DOT syntax unexpectedly parsed")
+			}
+		})
 	}
 }
 
