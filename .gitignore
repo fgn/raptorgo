@@ -9,6 +9,7 @@
 /report.json
 /dev/interop/rust-oracle/target/
 /dev/formal/states/
+/dev/formal/mbt/failures/
 /dev/formal/*.out
 /dev/formal/*_TTrace_*.tla
 /dev/formal/*_TTrace_*.cfg

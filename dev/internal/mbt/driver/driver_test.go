@@ -1,12 +1,56 @@
 package driver
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/fgn/raptorgo"
 	"github.com/fgn/raptorgo/dev/internal/mbt/schedule"
+	"github.com/fgn/raptorgo/internal/codec"
 )
+
+func TestCheckErrorRejectsUnexpectedSentinelClasses(t *testing.T) {
+	tests := []struct {
+		name, result string
+		err          error
+		exactDecode  bool
+	}{
+		{
+			"invalid-plus-terminal", "invalid",
+			errors.Join(raptorgo.ErrInvalidPacket, raptorgo.ErrObjectTerminal), false,
+		},
+		{
+			"invalid-plus-payload-id", "invalid",
+			errors.Join(raptorgo.ErrInvalidPacket, raptorgo.ErrInvalidPayloadID), false,
+		},
+		{
+			"conflict-plus-attempt-limit", "conflict",
+			errors.Join(
+				raptorgo.ErrObjectDecoder,
+				codec.ErrDecoderDuplicateConflict,
+				codec.ErrDecoderAttemptLimit,
+			), false,
+		},
+		{
+			"decode-plus-conflict", "decode_error",
+			errors.Join(
+				raptorgo.ErrObjectDecoder,
+				codec.ErrDecoderAttemptLimit,
+				codec.ErrDecoderDuplicateConflict,
+			), true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if err := checkError(test.result, test.err, test.exactDecode); err == nil ||
+				!strings.Contains(err.Error(), "want false") {
+				t.Fatalf("checkError = %v, want unexpected-sentinel rejection", err)
+			}
+		})
+	}
+}
 
 func TestRepresentativeSchedules(t *testing.T) {
 	tests := []schedule.Schedule{

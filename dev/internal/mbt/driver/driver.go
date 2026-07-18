@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/fgn/raptorgo"
 	"github.com/fgn/raptorgo/dev/internal/mbt/schedule"
@@ -150,41 +151,59 @@ func Run(value schedule.Schedule) (Result, error) {
 	if err := ValidateSchedule(value); err != nil {
 		return Result{}, err
 	}
+	return runExecutable(value)
+}
+
+func runExecutable(value schedule.Schedule) (Result, error) {
 	if value.Fixture == "zero-length" {
 		return runZeroLength(value)
 	}
 	callbacks := callbackPlan(value)
 	fixture, err := buildFixture(value, callbacks)
 	if err != nil {
-		return Result{}, err
+		return Result{}, finalFailure(FailureFixture, "ready", "fixture-error", err)
 	}
 	for index, step := range value.Steps {
 		before := len(fixture.recorder.Events())
 		packet, err := fixture.packetFor(step)
 		if err != nil {
-			return Result{}, fmt.Errorf("mbt: step %d: %w", index, err)
+			return fixture.result(), stepFailure(
+				index, step.Action, FailurePacket, "packet-ready", errorClass(err), err,
+			)
 		}
 		state, addErr := fixture.recorder.AddPacket(packet)
 		if fixture.callbackErr != nil {
-			return Result{}, fmt.Errorf("mbt: step %d callback: %w", index, fixture.callbackErr)
+			return fixture.result(), stepFailure(
+				index, step.Action, FailureCallback, "none", "callback-error", fixture.callbackErr,
+			)
 		}
 		if err := checkError(step.Expect.Result, addErr, step.Action == "DecodeFail"); err != nil {
-			return Result{}, fmt.Errorf("mbt: step %d action %s: %w", index, step.Action, err)
+			return fixture.result(), stepFailure(
+				index, step.Action, FailureError, step.Expect.Result, errorClass(addErr), err,
+			)
 		}
 		if got := state.String(); got != step.Expect.State {
-			return Result{}, fmt.Errorf("mbt: step %d state=%s, want %s", index, got, step.Expect.State)
+			return fixture.result(), stepFailure(
+				index, step.Action, FailureState, step.Expect.State, got, nil,
+			)
 		}
 		if got := fixture.decoder.CompletedBlocks(); got != step.Expect.Completed {
-			return Result{}, fmt.Errorf("mbt: step %d completed=%d, want %d", index, got, step.Expect.Completed)
+			return fixture.result(), stepFailure(
+				index, step.Action, FailureComplete,
+				fmt.Sprint(step.Expect.Completed), fmt.Sprint(got), nil,
+			)
 		}
 		events := fixture.recorder.Events()
 		if err := checkEventTail(events[before:], step.Expect.Events); err != nil {
-			return Result{}, fmt.Errorf("mbt: step %d: %w", index, err)
+			return fixture.result(), stepFailure(
+				index, step.Action, FailureEvents,
+				strings.Join(step.Expect.Events, ","), eventSignature(events[before:]), err,
+			)
 		}
 	}
 	events := fixture.recorder.Events()
 	if err := objtrace.ValidateTrace(events); err != nil {
-		return Result{}, fmt.Errorf("mbt: resulting trace: %w", err)
+		return Result{Events: events}, finalFailure(FailureTrace, "valid", "invalid", err)
 	}
 	return Result{Events: events}, nil
 }
@@ -200,6 +219,10 @@ type fixture struct {
 	terminal    []byte
 	decodeFail  []byte
 	callbackErr error
+}
+
+func (fixture *fixture) result() Result {
+	return Result{Events: fixture.recorder.Events()}
 }
 
 func buildFixture(value schedule.Schedule, callbacks schedule.Callbacks) (*fixture, error) {
@@ -394,28 +417,46 @@ func runZeroLength(value schedule.Schedule) (Result, error) {
 	case "ConstructDeliveryFailed":
 		deliveryError = injectedCallbackFailure
 	default:
-		return Result{}, fmt.Errorf("mbt: unsupported zero-length action %s", step.Action)
+		return Result{}, stepFailure(
+			0, step.Action, FailureFixture, "supported zero-length action", "unsupported", nil,
+		)
 	}
 	decoder, constructorErr := raptorgo.NewObjectDecoder(
 		oti, raptorgo.DefaultLimits(), "mbt-zero-length",
 		recorder.Verifier(verificationError), recorder.Deliverer(deliveryError),
 	)
 	if decoder == nil {
-		return Result{}, errors.New("mbt: zero-length constructor returned nil decoder")
+		return Result{}, stepFailure(
+			0, step.Action, FailureFixture, "non-nil decoder", "nil decoder", constructorErr,
+		)
 	}
 	recorder.BindDecoder(decoder)
+	result := Result{Events: recorder.Events()}
 	if err := checkError(step.Expect.Result, constructorErr, false); err != nil {
-		return Result{}, err
+		return result, stepFailure(
+			0, step.Action, FailureError, step.Expect.Result, errorClass(constructorErr), err,
+		)
 	}
-	if decoder.State().String() != step.Expect.State || decoder.CompletedBlocks() != step.Expect.Completed {
-		return Result{}, fmt.Errorf("mbt: zero-length state=%s completed=%d, want %s/%d",
-			decoder.State(), decoder.CompletedBlocks(), step.Expect.State, step.Expect.Completed)
+	if got := decoder.State().String(); got != step.Expect.State {
+		return result, stepFailure(0, step.Action, FailureState, step.Expect.State, got, nil)
 	}
-	events := recorder.Events()
+	if got := decoder.CompletedBlocks(); got != step.Expect.Completed {
+		return result, stepFailure(
+			0, step.Action, FailureComplete,
+			fmt.Sprint(step.Expect.Completed), fmt.Sprint(got), nil,
+		)
+	}
+	events := result.Events
 	if err := checkEventTail(events, step.Expect.Events); err != nil {
-		return Result{}, err
+		return result, stepFailure(
+			0, step.Action, FailureEvents,
+			strings.Join(step.Expect.Events, ","), eventSignature(events), err,
+		)
 	}
-	return Result{Events: events}, nil
+	if err := objtrace.ValidateTrace(events); err != nil {
+		return result, finalFailure(FailureTrace, "valid", "invalid", err)
+	}
+	return result, nil
 }
 
 func callbackPlan(value schedule.Schedule) schedule.Callbacks {
@@ -449,7 +490,7 @@ func validateCallbacks(callbacks *schedule.Callbacks) error {
 }
 
 func checkError(result string, err error, exactDecode bool) error {
-	wants := map[error]bool{}
+	wants := make(map[error]bool)
 	switch result {
 	case "ok":
 		if err != nil {
@@ -480,12 +521,36 @@ func checkError(result string, err error, exactDecode bool) error {
 	if err == nil {
 		return fmt.Errorf("error=nil, want %s", result)
 	}
-	for sentinel := range wants {
-		if !errors.Is(err, sentinel) {
-			return fmt.Errorf("error=%v does not wrap %v", err, sentinel)
+	for _, sentinel := range oracleErrorSentinels {
+		got, want := errors.Is(err, sentinel), wants[sentinel]
+		if got != want {
+			return fmt.Errorf("error=%v sentinel %v=%t, want %t", err, sentinel, got, want)
 		}
 	}
 	return nil
+}
+
+// oracleErrorSentinels is the closed error alphabet asserted both positively
+// and negatively by Oracle 1. New expected result classes must extend this
+// list and the mapping above together.
+var oracleErrorSentinels = []error{
+	raptorgo.ErrObjectVerification,
+	raptorgo.ErrObjectDelivery,
+	raptorgo.ErrObjectDecoder,
+	raptorgo.ErrObjectTerminal,
+	raptorgo.ErrInvalidPacket,
+	raptorgo.ErrInvalidPayloadID,
+	raptorgo.ErrLimitExceeded,
+	codec.ErrDecoderLimits,
+	codec.ErrDecoderBacking,
+	codec.ErrDecoderSymbol,
+	codec.ErrDecoderAttemptLimit,
+	codec.ErrDecoderDuplicateConflict,
+	codec.ErrDecoderRetainedLimit,
+	codec.ErrDecoderComplexity,
+	codec.ErrDecoderConflict,
+	codec.ErrDecoderComplete,
+	codec.ErrDecoderNotComplete,
 }
 
 func checkEventTail(events []objtrace.Event, operations []string) error {
