@@ -3,6 +3,8 @@ EXTENDS Naturals, Sequences
 
 CONSTANTS Trace, Blocks
 
+\* Blocks counts only nonempty source blocks, matching CompletedBlocks.
+
 VARIABLES state, completed, verification, delivery, traceIndex
 
 vars == <<state, completed, verification, delivery, traceIndex>>
@@ -12,10 +14,18 @@ States == {
     "verification-failed", "delivery-failed"
 }
 
-TerminalStates == {
-    "decode-failed", "decoded", "verified", "delivered",
-    "verification-failed", "delivery-failed"
+StableTerminalStates == {
+    "decode-failed", "delivered", "verification-failed", "delivery-failed"
 }
+
+AddRejectingStates == StableTerminalStates \cup {"decoded", "verified"}
+
+RejectingStateReady ==
+    /\ state \in AddRejectingStates
+    /\ (state = "decoded" => /\ verification = 1
+                               /\ delivery = 0)
+    /\ (state = "verified" => /\ verification = 1
+                                /\ delivery = 1)
 
 Matches(record) ==
     /\ state = record.state
@@ -29,8 +39,8 @@ MatchesNext(record) ==
     /\ verification' = record.verification
     /\ delivery' = record.delivery
 
-Init ==
-    /\ Len(Trace) > 0
+ReceivingInit ==
+    /\ Blocks > 0
     /\ Trace[1].op = "init"
     /\ Trace[1].result = "ok"
     /\ Trace[1].bindingOK
@@ -38,7 +48,44 @@ Init ==
     /\ completed = 0
     /\ verification = 0
     /\ delivery = 0
+
+ConstructDeliveredInit ==
+    /\ Blocks = 0
+    /\ Trace[1].op = "construct_final"
+    /\ Trace[1].result = "ok"
+    /\ Trace[1].bindingOK
+    /\ state = "delivered"
+    /\ completed = 0
+    /\ verification = 1
+    /\ delivery = 1
+
+ConstructVerificationFailedInit ==
+    /\ Blocks = 0
+    /\ Trace[1].op = "construct_final"
+    /\ Trace[1].result = "verification_error"
+    /\ Trace[1].bindingOK
+    /\ state = "verification-failed"
+    /\ completed = 0
+    /\ verification = 1
+    /\ delivery = 0
+
+ConstructDeliveryFailedInit ==
+    /\ Blocks = 0
+    /\ Trace[1].op = "construct_final"
+    /\ Trace[1].result = "delivery_error"
+    /\ Trace[1].bindingOK
+    /\ state = "delivery-failed"
+    /\ completed = 0
+    /\ verification = 1
+    /\ delivery = 1
+
+Init ==
+    /\ Len(Trace) > 0
     /\ traceIndex = 1
+    /\ \/ ReceivingInit
+       \/ ConstructDeliveredInit
+       \/ ConstructVerificationFailedInit
+       \/ ConstructDeliveryFailedInit
     /\ Matches(Trace[1])
 
 Apply(record) ==
@@ -85,6 +132,18 @@ Apply(record) ==
        /\ delivery = 0
        /\ state' = "decode-failed"
        /\ UNCHANGED <<completed, verification, delivery>>
+    \/ /\ record.op = "add_reject_invalid"
+       /\ record.result = "invalid"
+       /\ state = "receiving"
+       /\ UNCHANGED <<state, completed, verification, delivery>>
+    \/ /\ record.op = "add_reject_limit"
+       /\ record.result = "limit"
+       /\ state = "receiving"
+       /\ UNCHANGED <<state, completed, verification, delivery>>
+    \/ /\ record.op = "add_reject_conflict"
+       /\ record.result = "conflict"
+       /\ state = "receiving"
+       /\ UNCHANGED <<state, completed, verification, delivery>>
     \/ /\ record.op = "add_return"
        /\ IF record.result = "ok"
           THEN /\ state = "verified"
@@ -104,7 +163,7 @@ Apply(record) ==
        /\ UNCHANGED <<completed, verification, delivery>>
     \/ /\ record.op = "terminal_add"
        /\ record.result = "terminal"
-       /\ state \in TerminalStates
+       /\ RejectingStateReady
        /\ UNCHANGED <<state, completed, verification, delivery>>
 
 Next ==
@@ -118,11 +177,12 @@ TraceSpec == Init /\ [][Next]_vars /\ WF_vars(Next)
 
 TypeOK ==
     /\ state \in States
-    /\ Blocks > 0
+    /\ Blocks \in Nat
     /\ completed \in 0..Blocks
     /\ verification \in 0..1
     /\ delivery \in 0..1
     /\ traceIndex \in 1..Len(Trace)
+    /\ (Blocks = 0 => state \in StableTerminalStates)
 
 ExactlyOnce == delivery <= verification
 NoDeliveryWithoutVerification == delivery > 0 => verification > 0
