@@ -19,21 +19,22 @@ const DepthCap = 32
 
 // Schedule is one executable public-API witness path.
 type Schedule struct {
-	V       int    `json:"v"`
-	Model   string `json:"model"`
-	Cfg     string `json:"cfg"`
-	Fixture string `json:"fixture"`
-	Steps   []Step `json:"steps"`
+	V           int    `json:"v"`
+	Model       string `json:"model"`
+	Cfg         string `json:"cfg"`
+	Fixture     string `json:"fixture"`
+	GraphDigest string `json:"graphDigest"`
+	Steps       []Step `json:"steps"`
 }
 
 // Step is one ObjectDecoder construction or AddPacket call.
 type Step struct {
-	Action       string     `json:"action"`
-	SBN          *uint8     `json:"sbn,omitempty"`
-	ESI          *uint32    `json:"esi,omitempty"`
-	Callbacks    *Callbacks `json:"callbacks,omitempty"`
-	Expect       Expect     `json:"expect"`
-	ModelActions []string   `json:"modelActions"`
+	Action     string      `json:"action"`
+	SBN        *uint8      `json:"sbn,omitempty"`
+	ESI        *uint32     `json:"esi,omitempty"`
+	Callbacks  *Callbacks  `json:"callbacks,omitempty"`
+	Expect     Expect      `json:"expect"`
+	ModelEdges []ModelEdge `json:"modelEdges"`
 }
 
 // Callbacks controls one fused verifier/deliverer call sequence.
@@ -46,10 +47,18 @@ type Callbacks struct {
 
 // Expect is Oracle 1's exact post-call observation.
 type Expect struct {
-	State     string   `json:"state"`
-	Completed uint32   `json:"completed"`
-	Result    string   `json:"result"`
-	Events    []string `json:"events"`
+	State            string   `json:"state"`
+	Completed        uint32   `json:"completed"`
+	Result           string   `json:"result"`
+	Events           []string `json:"events"`
+	CompletedPresent bool     `json:"-"`
+}
+
+// ModelEdge pins one exact dumped graph edge, not merely an action label.
+type ModelEdge struct {
+	Src    string `json:"src"`
+	Action string `json:"action"`
+	Dst    string `json:"dst"`
 }
 
 // NamedSchedule couples a stable filename stem to a schedule.
@@ -64,6 +73,9 @@ type NamedSchedule struct {
 func SelectPaths(graph dotparse.Graph) ([][]dotparse.Edge, error) {
 	if len(graph.Inits) != 1 {
 		return nil, fmt.Errorf("schedule: graph has %d initial states, want 1", len(graph.Inits))
+	}
+	if len(graph.Edges) == 0 {
+		return nil, errors.New("schedule: graph has no edges")
 	}
 	edgeIndex, outgoing, err := indexGraph(graph)
 	if err != nil {
@@ -125,16 +137,32 @@ func Build(graph dotparse.Graph, cfg, fixture string) ([]NamedSchedule, error) {
 		return nil, err
 	}
 	result := make([]NamedSchedule, 0, len(paths))
+	graphDigest := GraphDigest(graph)
 	for index, path := range paths {
 		steps, err := Fold(path, graph.States)
 		if err != nil {
 			return nil, fmt.Errorf("schedule: path %d: %w", index, err)
 		}
 		digest := pathDigest(path)
+		pathFixture := fixture
+		if cfg == "B" {
+			pathFixture = "one-block"
+			for _, edge := range path {
+				name, _, parseErr := ParseAction(edge.Action)
+				if parseErr != nil {
+					return nil, parseErr
+				}
+				if name == "DecodeFail" {
+					pathFixture = "rank-deficient"
+					break
+				}
+			}
+		}
 		result = append(result, NamedSchedule{
 			Name: fmt.Sprintf("%03d-%s.json", index, digest),
 			Schedule: Schedule{
-				V: 1, Model: "ObjectDecoderModel", Cfg: cfg, Fixture: fixture, Steps: steps,
+				V: 1, Model: "ObjectDecoderModel", Cfg: cfg, Fixture: pathFixture,
+				GraphDigest: graphDigest, Steps: steps,
 			},
 		})
 	}
@@ -209,7 +237,7 @@ func ordinaryStep(edge dotparse.Edge, name string, parameters []int, states map[
 	if err != nil {
 		return Step{}, fmt.Errorf("schedule: action %s destination: %w", edge.Action, err)
 	}
-	step := Step{Action: name, ModelActions: []string{edge.Action}}
+	step := Step{Action: name, ModelEdges: []ModelEdge{modelEdge(edge)}}
 	event, result := "", ""
 	switch name {
 	case "AddWait":
@@ -232,7 +260,7 @@ func ordinaryStep(edge dotparse.Edge, name string, parameters []int, states map[
 		return Step{}, fmt.Errorf("schedule: unknown action %s", name)
 	}
 	if name == "AddWait" || name == "BlockComplete" || name == "RejectConflict" {
-		if len(parameters) != 2 || parameters[0] > 255 {
+		if len(parameters) != 2 || parameters[0] > 255 || uint64(parameters[1]) > uint64(^uint32(0)) {
 			return Step{}, fmt.Errorf("schedule: action %s wants (sbn,esi)", edge.Action)
 		}
 		sbn, esi := uint8(parameters[0]), uint32(parameters[1])
@@ -240,19 +268,21 @@ func ordinaryStep(edge dotparse.Edge, name string, parameters []int, states map[
 	} else if len(parameters) != 0 {
 		return Step{}, fmt.Errorf("schedule: parameterless action %s has parameters", edge.Action)
 	}
-	step.Expect = Expect{State: state, Completed: completed, Result: result, Events: []string{event}}
+	step.Expect = Expect{
+		State: state, Completed: completed, Result: result, Events: []string{event}, CompletedPresent: true,
+	}
 	return step, nil
 }
 
 func finalizationStep(path []dotparse.Edge, parameters []int, states map[string]dotparse.State) (Step, int, error) {
-	if len(parameters) != 2 || parameters[0] > 255 {
+	if len(parameters) != 2 || parameters[0] > 255 || uint64(parameters[1]) > uint64(^uint32(0)) {
 		return Step{}, 0, errors.New("schedule: FinalizeVerifyEnter wants (sbn,esi)")
 	}
 	sbn, esi := uint8(parameters[0]), uint32(parameters[1])
 	step := Step{
 		Action: "FinalizeVerifyEnter", SBN: &sbn, ESI: &esi,
-		Callbacks:    &Callbacks{Verify: "ok"},
-		ModelActions: []string{path[0].Action},
+		Callbacks:  &Callbacks{Verify: "ok"},
+		ModelEdges: []ModelEdge{modelEdge(path[0])},
 	}
 	events := []string{"verify_enter"}
 	consumed := 1
@@ -305,7 +335,7 @@ func finalizationStep(path []dotparse.Edge, parameters []int, states map[string]
 				return Step{}, 0, fmt.Errorf("schedule: %s cannot finish delivery", name)
 			}
 		}
-		step.ModelActions = append(step.ModelActions, edge.Action)
+		step.ModelEdges = append(step.ModelEdges, modelEdge(edge))
 		consumed++
 	}
 	return Step{}, 0, errors.New("schedule: path ends inside finalization")
@@ -319,12 +349,14 @@ func finalizeExpected(
 	result string,
 	states map[string]dotparse.State,
 ) (Step, int, error) {
-	step.ModelActions = append(step.ModelActions, edge.Action)
+	step.ModelEdges = append(step.ModelEdges, modelEdge(edge))
 	state, completed, err := expectedState(states[edge.Dst])
 	if err != nil {
 		return Step{}, 0, err
 	}
-	step.Expect = Expect{State: state, Completed: completed, Result: result, Events: events}
+	step.Expect = Expect{
+		State: state, Completed: completed, Result: result, Events: events, CompletedPresent: true,
+	}
 	return step, consumed, nil
 }
 
@@ -419,8 +451,12 @@ func minimumCompletion(stateID string, graph dotparse.Graph, outgoing map[string
 	if err != nil {
 		return nil, err
 	}
-	if phase != "decoded" && phase != "verified" {
+	switch phase {
+	case "receiving", "decode-failed", "delivered", "verification-failed", "delivery-failed":
 		return nil, nil
+	case "decoded", "verified":
+	default:
+		return nil, fmt.Errorf("schedule: unknown model phase %q", phase)
 	}
 	if phase == "verified" {
 		delivery := state["delivery"]
@@ -473,13 +509,13 @@ func pathDigest(path []dotparse.Edge) string {
 	return hex.EncodeToString(digest[:])[:12]
 }
 
-// CoveredEdges returns the distinct edge triples represented by schedules.
+// CoveredEdges returns the distinct canonical edge triples represented by schedules.
 func CoveredEdges(schedules []NamedSchedule) []string {
 	seen := make(map[string]bool)
 	for _, named := range schedules {
 		for _, step := range named.Schedule.Steps {
-			for _, action := range step.ModelActions {
-				seen[action] = true
+			for _, edge := range step.ModelEdges {
+				seen[EdgeKey(edge)] = true
 			}
 		}
 	}
@@ -489,4 +525,64 @@ func CoveredEdges(schedules []NamedSchedule) []string {
 	}
 	sort.Strings(result)
 	return result
+}
+
+// EdgeKey is the lossless canonical identity of one dumped graph edge.
+func EdgeKey(edge ModelEdge) string {
+	return edge.Src + "\x00" + edge.Action + "\x00" + edge.Dst
+}
+
+// GraphDigest pins the exact deterministic graph consumed by a schedule set.
+func GraphDigest(graph dotparse.Graph) string {
+	var canonical strings.Builder
+	for _, init := range graph.Inits {
+		fmt.Fprintf(&canonical, "I\x00%s\n", init)
+	}
+	for _, id := range graph.StateIDs {
+		fmt.Fprintf(&canonical, "S\x00%s", id)
+		state := graph.States[id]
+		names := make([]string, 0, len(state))
+		for name := range state {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			fmt.Fprintf(&canonical, "\x00%s=%#v", name, state[name])
+		}
+		canonical.WriteByte('\n')
+	}
+	for _, edge := range graph.Edges {
+		fmt.Fprintf(&canonical, "E\x00%s\x00%s\x00%s\n", edge.Src, edge.Action, edge.Dst)
+	}
+	digest := sha256.Sum256([]byte(canonical.String()))
+	return hex.EncodeToString(digest[:])
+}
+
+func modelEdge(edge dotparse.Edge) ModelEdge {
+	return ModelEdge{Src: edge.Src, Action: edge.Action, Dst: edge.Dst}
+}
+
+// UnmarshalJSON makes omission of expect.completed distinguishable from an
+// explicit and meaningful zero.
+func (expect *Expect) UnmarshalJSON(encoded []byte) error {
+	type wireExpect struct {
+		State     string   `json:"state"`
+		Completed *uint32  `json:"completed"`
+		Result    string   `json:"result"`
+		Events    []string `json:"events"`
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(encoded)))
+	decoder.DisallowUnknownFields()
+	var wire wireExpect
+	if err := decoder.Decode(&wire); err != nil {
+		return err
+	}
+	if wire.Completed == nil {
+		return errors.New("schedule: expect.completed is required")
+	}
+	*expect = Expect{
+		State: wire.State, Completed: *wire.Completed, Result: wire.Result,
+		Events: wire.Events, CompletedPresent: true,
+	}
+	return nil
 }

@@ -29,22 +29,57 @@ func main() {
 	must(closeErr)
 	schedules, err := schedule.Build(graph, *cfg, *fixture)
 	must(err)
-	must(os.MkdirAll(*output, 0o755))
-	entries, err := os.ReadDir(*output)
+	parent, base := filepath.Dir(*output), filepath.Base(*output)
+	must(os.MkdirAll(parent, 0o755))
+	staging, err := os.MkdirTemp(parent, "."+base+".staging-")
 	must(err)
-	for _, entry := range entries {
-		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".json" {
-			must(os.Remove(filepath.Join(*output, entry.Name())))
+	complete := false
+	defer func() {
+		if !complete {
+			_ = os.RemoveAll(staging)
 		}
-	}
+	}()
 	sort.Slice(schedules, func(left, right int) bool { return schedules[left].Name < schedules[right].Name })
 	for _, named := range schedules {
 		encoded, encodeErr := schedule.Marshal(named.Schedule)
 		must(encodeErr)
-		path := filepath.Join(*output, named.Name)
+		path := filepath.Join(staging, named.Name)
 		must(os.WriteFile(path, encoded, 0o644))
-		fmt.Println(path)
 	}
+	must(replaceDirectory(staging, *output))
+	complete = true
+	for _, named := range schedules {
+		fmt.Println(filepath.Join(*output, named.Name))
+	}
+}
+
+func replaceDirectory(staging, output string) error {
+	backup := output + ".previous"
+	if err := os.RemoveAll(backup); err != nil {
+		return err
+	}
+	_, statErr := os.Stat(output)
+	hadOutput := statErr == nil
+	if statErr != nil && !os.IsNotExist(statErr) {
+		return statErr
+	}
+	if hadOutput {
+		if err := os.Rename(output, backup); err != nil {
+			return err
+		}
+	}
+	if err := os.Rename(staging, output); err != nil {
+		if hadOutput {
+			_ = os.Rename(backup, output)
+		}
+		return err
+	}
+	if hadOutput {
+		if err := os.RemoveAll(backup); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func must(err error) {

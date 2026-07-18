@@ -2,6 +2,7 @@ package driver
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fgn/raptorgo/dev/internal/mbt/schedule"
@@ -10,7 +11,7 @@ import (
 func TestRepresentativeSchedules(t *testing.T) {
 	tests := []schedule.Schedule{
 		{
-			V: 1, Model: "ObjectDecoderModel", Cfg: "A", Fixture: "two-block",
+			V: 1, Model: "ObjectDecoderModel", Cfg: "A", Fixture: "two-block", GraphDigest: testGraphDigest,
 			Steps: []schedule.Step{
 				packetStep("AddWait", 0, 0, "receiving", 0, "ok", "add_wait"),
 				packetStep("AddWait", 1, 0, "receiving", 0, "ok", "add_wait"),
@@ -20,7 +21,7 @@ func TestRepresentativeSchedules(t *testing.T) {
 			},
 		},
 		{
-			V: 1, Model: "ObjectDecoderModel", Cfg: "A", Fixture: "two-block",
+			V: 1, Model: "ObjectDecoderModel", Cfg: "A", Fixture: "two-block", GraphDigest: testGraphDigest,
 			Steps: []schedule.Step{
 				packetStep("AddWait", 0, 0, "receiving", 0, "ok", "add_wait"),
 				packetStep("AddWait", 1, 0, "receiving", 0, "ok", "add_wait"),
@@ -30,17 +31,17 @@ func TestRepresentativeSchedules(t *testing.T) {
 			},
 		},
 		{
-			V: 1, Model: "ObjectDecoderModel", Cfg: "B", Fixture: "one-block",
+			V: 1, Model: "ObjectDecoderModel", Cfg: "B", Fixture: "one-block", GraphDigest: testGraphDigest,
 			Steps: []schedule.Step{
-				{Action: "RejectInvalid", Expect: schedule.Expect{State: "receiving", Result: "invalid", Events: []string{"add_reject_invalid"}}, ModelActions: []string{"RejectInvalid"}},
-				{Action: "RejectLimit", Expect: schedule.Expect{State: "receiving", Result: "limit", Events: []string{"add_reject_limit"}}, ModelActions: []string{"RejectLimit"}},
+				manualStep("RejectInvalid", "receiving", "invalid", "add_reject_invalid"),
+				manualStep("RejectLimit", "receiving", "limit", "add_reject_limit"),
 			},
 		},
 		{
-			V: 1, Model: "ObjectDecoderModel", Cfg: "B", Fixture: "one-block",
+			V: 1, Model: "ObjectDecoderModel", Cfg: "B", Fixture: "rank-deficient", GraphDigest: testGraphDigest,
 			Steps: []schedule.Step{
-				{Action: "DecodeFail", Expect: schedule.Expect{State: "decode-failed", Result: "decode_error", Events: []string{"decode_failure"}}, ModelActions: []string{"DecodeFail"}},
-				{Action: "TerminalAdd", Expect: schedule.Expect{State: "decode-failed", Result: "terminal", Events: []string{"terminal_add"}}, ModelActions: []string{"TerminalAdd"}},
+				manualStep("DecodeFail", "decode-failed", "decode_error", "decode_failure"),
+				manualStep("TerminalAdd", "decode-failed", "terminal", "terminal_add"),
 			},
 		},
 	}
@@ -61,11 +62,13 @@ func TestZeroLengthSchedules(t *testing.T) {
 	}
 	for _, test := range tests {
 		value := schedule.Schedule{
-			V: 1, Model: "ObjectDecoderModel", Cfg: "construct", Fixture: "zero-length",
+			V: 1, Model: "ObjectDecoderModel", Cfg: "construct", Fixture: "zero-length", GraphDigest: testGraphDigest,
 			Steps: []schedule.Step{{
-				Action:       test.action,
-				Expect:       schedule.Expect{State: test.state, Result: test.result, Events: []string{"construct_final"}},
-				ModelActions: []string{test.action},
+				Action: test.action,
+				Expect: schedule.Expect{
+					State: test.state, Result: test.result, Events: []string{"construct_final"}, CompletedPresent: true,
+				},
+				ModelEdges: []schedule.ModelEdge{{Src: "manual", Action: test.action, Dst: test.state}},
 			}},
 		}
 		result, err := Run(value)
@@ -97,18 +100,51 @@ func TestCommittedSchedules(t *testing.T) {
 	}
 }
 
+func TestReadScheduleRequiresExplicitCompleted(t *testing.T) {
+	input := `{"v":1,"model":"ObjectDecoderModel","cfg":"B","fixture":"one-block","graphDigest":"` + testGraphDigest + `","steps":[{"action":"RejectInvalid","expect":{"state":"receiving","result":"invalid","events":["add_reject_invalid"]},"modelEdges":[{"src":"a","action":"RejectInvalid","dst":"a"}]}]}`
+	if _, err := ReadSchedule(strings.NewReader(input)); err == nil || !strings.Contains(err.Error(), "expect.completed is required") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestValidateScheduleBindsDecodeFixture(t *testing.T) {
+	value := schedule.Schedule{
+		V: 1, Model: "ObjectDecoderModel", Cfg: "B", Fixture: "one-block", GraphDigest: testGraphDigest,
+		Steps: []schedule.Step{manualStep("DecodeFail", "decode-failed", "decode_error", "decode_failure")},
+	}
+	if err := ValidateSchedule(value); err == nil || !strings.Contains(err.Error(), "must coincide") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func packetStep(action string, sbn uint8, esi uint32, state string, completed uint32, result, event string) schedule.Step {
 	return schedule.Step{
 		Action: action, SBN: &sbn, ESI: &esi,
-		Expect:       schedule.Expect{State: state, Completed: completed, Result: result, Events: []string{event}},
-		ModelActions: []string{action},
+		Expect: schedule.Expect{
+			State: state, Completed: completed, Result: result, Events: []string{event}, CompletedPresent: true,
+		},
+		ModelEdges: []schedule.ModelEdge{{Src: "test-src", Action: action, Dst: "test-dst"}},
 	}
 }
 
 func finalStep(sbn uint8, esi uint32, callbacks schedule.Callbacks, state, result string, events ...string) schedule.Step {
 	return schedule.Step{
 		Action: "FinalizeVerifyEnter", SBN: &sbn, ESI: &esi, Callbacks: &callbacks,
-		Expect:       schedule.Expect{State: state, Completed: 2, Result: result, Events: events},
-		ModelActions: []string{"FinalizeVerifyEnter"},
+		Expect: schedule.Expect{
+			State: state, Completed: 2, Result: result, Events: events, CompletedPresent: true,
+		},
+		ModelEdges: []schedule.ModelEdge{{Src: "test-src", Action: "FinalizeVerifyEnter", Dst: "test-dst"}},
 	}
 }
+
+func manualStep(action, state, result, event string) schedule.Step {
+	return schedule.Step{
+		Action: action,
+		Expect: schedule.Expect{
+			State: state, Result: result, Events: []string{event}, CompletedPresent: true,
+		},
+		ModelEdges: []schedule.ModelEdge{{Src: "test-src", Action: action, Dst: "test-dst"}},
+	}
+}
+
+const testGraphDigest = "0000000000000000000000000000000000000000000000000000000000000000"

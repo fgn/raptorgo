@@ -1,8 +1,11 @@
 package schedule
 
 import (
+	"encoding/json"
 	"os"
 	"reflect"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -71,14 +74,81 @@ func TestBuildAndMarshalAreDeterministic(t *testing.T) {
 		t.Fatal("schedule build is nondeterministic")
 	}
 	seenNames := make(map[string]bool)
+	covered := CoveredEdges(first)
+	if len(covered) != len(graph.Edges) {
+		t.Fatalf("persisted coverage has %d edges, want %d", len(covered), len(graph.Edges))
+	}
+	wantEdges := make([]string, len(graph.Edges))
+	for index, edge := range graph.Edges {
+		wantEdges[index] = EdgeKey(modelEdge(edge))
+	}
+	sort.Strings(wantEdges)
+	if !reflect.DeepEqual(covered, wantEdges) {
+		t.Fatal("persisted schedules do not retain the exact graph edge set")
+	}
 	for _, named := range first {
 		if seenNames[named.Name] {
 			t.Fatalf("duplicate name %s", named.Name)
 		}
 		seenNames[named.Name] = true
-		if _, err := Marshal(named.Schedule); err != nil {
+		encoded, err := Marshal(named.Schedule)
+		if err != nil {
 			t.Fatal(err)
 		}
+		var roundTrip Schedule
+		if err := json.Unmarshal(encoded, &roundTrip); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(named.Schedule, roundTrip) {
+			t.Fatalf("schedule round trip mismatch\nwant=%#v\ngot=%#v", named.Schedule, roundTrip)
+		}
+	}
+}
+
+func TestBuildAssignsTruthfulConfigBFixtures(t *testing.T) {
+	file, err := os.Open("../dotparse/testdata/object-decoder-model-b.dot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph, err := dotparse.Parse(file)
+	file.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	schedules, err := Build(graph, "B", "one-block")
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundDecode, foundSuccess := false, false
+	for _, named := range schedules {
+		hasDecode := false
+		for _, step := range named.Schedule.Steps {
+			hasDecode = hasDecode || step.Action == "DecodeFail"
+		}
+		if hasDecode {
+			foundDecode = true
+			if named.Schedule.Fixture != "rank-deficient" {
+				t.Fatalf("decode schedule fixture = %q", named.Schedule.Fixture)
+			}
+		} else {
+			foundSuccess = true
+			if named.Schedule.Fixture != "one-block" {
+				t.Fatalf("non-decode schedule fixture = %q", named.Schedule.Fixture)
+			}
+		}
+	}
+	if !foundDecode || !foundSuccess {
+		t.Fatalf("decode=%v success=%v", foundDecode, foundSuccess)
+	}
+}
+
+func TestSelectPathsRejectsEmptyGraph(t *testing.T) {
+	graph := dotparse.Graph{
+		States:   map[string]dotparse.State{"0": state("receiving", 0, 0, 0)},
+		StateIDs: []string{"0"}, Inits: []string{"0"},
+	}
+	if _, err := SelectPaths(graph); err == nil {
+		t.Fatal("empty graph unexpectedly generated schedules")
 	}
 }
 
@@ -114,8 +184,20 @@ func TestFoldAllFinalizationShapes(t *testing.T) {
 			if len(steps) != 1 || steps[0].Expect.Result != test.result ||
 				!reflect.DeepEqual(steps[0].Expect.Events, test.events) ||
 				steps[0].Callbacks.VerifyReentrantAdds != test.verifyR ||
-				steps[0].Callbacks.DeliverReentrantAdds != test.deliverR {
+				steps[0].Callbacks.DeliverReentrantAdds != test.deliverR ||
+				steps[0].Expect.State != states[test.path[len(test.path)-1].Dst]["state"].String ||
+				steps[0].Expect.Completed != 2 || !steps[0].Expect.CompletedPresent ||
+				len(steps[0].ModelEdges) != len(test.path) {
 				t.Fatalf("step = %#v", steps)
+			}
+			wantVerify, wantDeliver := "ok", "ok"
+			if test.result == "verification_error" {
+				wantVerify, wantDeliver = "fail", ""
+			} else if test.result == "delivery_error" {
+				wantDeliver = "fail"
+			}
+			if steps[0].Callbacks.Verify != wantVerify || steps[0].Callbacks.Deliver != wantDeliver {
+				t.Fatalf("callbacks = %#v, want verify=%s deliver=%s", steps[0].Callbacks, wantVerify, wantDeliver)
 			}
 		})
 	}
@@ -125,6 +207,28 @@ func TestFoldRejectsTransientPrefix(t *testing.T) {
 	states := map[string]dotparse.State{"decoded": state("decoded", 2, 1, 0)}
 	if _, err := Fold(edges("FinalizeVerifyEnter(1,1):decoded"), states); err == nil {
 		t.Fatal("transient prefix unexpectedly folded")
+	}
+}
+
+func TestMinimumCompletionRejectsUnknownPhase(t *testing.T) {
+	graph := dotparse.Graph{States: map[string]dotparse.State{"bad": state("decodedd", 0, 0, 0)}}
+	if _, err := minimumCompletion("bad", graph, nil); err == nil {
+		t.Fatal("unknown phase unexpectedly accepted as an API boundary")
+	}
+}
+
+func TestOrdinaryStepRejectsESIOverflow(t *testing.T) {
+	if strconv.IntSize < 64 {
+		t.Skip("overflow label does not fit host int")
+	}
+	states := map[string]dotparse.State{"dst": state("receiving", 0, 0, 0)}
+	edge := dotparse.Edge{Src: "src", Dst: "dst", Action: "AddWait(0,4294967296)"}
+	name, parameters, err := ParseAction(edge.Action)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ordinaryStep(edge, name, parameters, states); err == nil {
+		t.Fatal("ESI overflow unexpectedly accepted")
 	}
 }
 

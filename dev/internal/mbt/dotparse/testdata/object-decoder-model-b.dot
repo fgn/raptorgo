@@ -1,0 +1,35 @@
+strict digraph DiskGraph {
+node [shape=box,style=rounded]
+nodesep=0.35;
+subgraph cluster_graph {
+color="white";
+-7026174232243225298 [label="/\\ accepted0 = {}\n/\\ accepted1 = {}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0",style = filled]
+-7026174232243225298 -> 1564958257451391965 [label="FinalizeVerifyEnter(0,0)",color="black",fontcolor="black"];
+1564958257451391965 [label="/\\ accepted0 = {0}\n/\\ accepted1 = {}\n/\\ state = \"decoded\"\n/\\ completed = 1\n/\\ verification = 1\n/\\ delivery = 0",tooltip="/\\ accepted0 = {0}\n/\\ accepted1 = {}\n/\\ state = \"decoded\"\n/\\ completed = 1\n/\\ verification = 1\n/\\ delivery = 0"];
+-7026174232243225298 -> -7026174232243225298 [label="RejectInvalid",color="black",fontcolor="black"];
+-7026174232243225298 -> -7026174232243225298 [label="RejectLimit",color="black",fontcolor="black"];
+-7026174232243225298 -> 1528866276512986381 [label="DecodeFail",color="black",fontcolor="black"];
+1528866276512986381 [label="/\\ accepted0 = {}\n/\\ accepted1 = {}\n/\\ state = \"decode-failed\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0",tooltip="/\\ accepted0 = {}\n/\\ accepted1 = {}\n/\\ state = \"decode-failed\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0"];
+1564958257451391965 -> -8194890224972871979 [label="Verified",color="black",fontcolor="black"];
+-8194890224972871979 [label="/\\ accepted0 = {0}\n/\\ accepted1 = {}\n/\\ state = \"verified\"\n/\\ completed = 1\n/\\ verification = 1\n/\\ delivery = 0",tooltip="/\\ accepted0 = {0}\n/\\ accepted1 = {}\n/\\ state = \"verified\"\n/\\ completed = 1\n/\\ verification = 1\n/\\ delivery = 0"];
+1564958257451391965 -> 5853443543240272876 [label="VerifyFailed",color="black",fontcolor="black"];
+5853443543240272876 [label="/\\ accepted0 = {0}\n/\\ accepted1 = {}\n/\\ state = \"verification-failed\"\n/\\ completed = 1\n/\\ verification = 1\n/\\ delivery = 0",tooltip="/\\ accepted0 = {0}\n/\\ accepted1 = {}\n/\\ state = \"verification-failed\"\n/\\ completed = 1\n/\\ verification = 1\n/\\ delivery = 0"];
+1564958257451391965 -> 1564958257451391965 [label="TerminalAdd",color="black",fontcolor="black"];
+1528866276512986381 -> 1528866276512986381 [label="TerminalAdd",color="black",fontcolor="black"];
+-8194890224972871979 -> -6302986116384236571 [label="DeliverEnter",color="black",fontcolor="black"];
+-6302986116384236571 [label="/\\ accepted0 = {0}\n/\\ accepted1 = {}\n/\\ state = \"verified\"\n/\\ completed = 1\n/\\ verification = 1\n/\\ delivery = 1",tooltip="/\\ accepted0 = {0}\n/\\ accepted1 = {}\n/\\ state = \"verified\"\n/\\ completed = 1\n/\\ verification = 1\n/\\ delivery = 1"];
+5853443543240272876 -> 5853443543240272876 [label="TerminalAdd",color="black",fontcolor="black"];
+-6302986116384236571 -> 9042449075819497642 [label="Delivered",color="black",fontcolor="black"];
+9042449075819497642 [label="/\\ accepted0 = {0}\n/\\ accepted1 = {}\n/\\ state = \"delivered\"\n/\\ completed = 1\n/\\ verification = 1\n/\\ delivery = 1",tooltip="/\\ accepted0 = {0}\n/\\ accepted1 = {}\n/\\ state = \"delivered\"\n/\\ completed = 1\n/\\ verification = 1\n/\\ delivery = 1"];
+-6302986116384236571 -> -6552132173226816193 [label="DeliveryFailed",color="black",fontcolor="black"];
+-6552132173226816193 [label="/\\ accepted0 = {0}\n/\\ accepted1 = {}\n/\\ state = \"delivery-failed\"\n/\\ completed = 1\n/\\ verification = 1\n/\\ delivery = 1",tooltip="/\\ accepted0 = {0}\n/\\ accepted1 = {}\n/\\ state = \"delivery-failed\"\n/\\ completed = 1\n/\\ verification = 1\n/\\ delivery = 1"];
+-6302986116384236571 -> -6302986116384236571 [label="TerminalAdd",color="black",fontcolor="black"];
+9042449075819497642 -> 9042449075819497642 [label="TerminalAdd",color="black",fontcolor="black"];
+-6552132173226816193 -> -6552132173226816193 [label="TerminalAdd",color="black",fontcolor="black"];
+{rank = same; -7026174232243225298;}
+{rank = same; 1564958257451391965;1528866276512986381;}
+{rank = same; 5853443543240272876;-8194890224972871979;}
+{rank = same; -6302986116384236571;}
+{rank = same; -6552132173226816193;9042449075819497642;}
+}
+}

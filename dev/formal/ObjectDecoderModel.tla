@@ -199,7 +199,17 @@ VerifiedAfterVerification == state = "verified" => verification = 1
 NoSuccessBeforeCompletion ==
     state \in {"decoded", "verified", "delivered",
                "verification-failed", "delivery-failed"} => completed = Blocks
-NonTerminalCanProgress == state \notin StableTerminalStates => ENABLED Next
+ProductiveNext ==
+    /\ ExpectedNext
+    /\ \/ accepted0' # accepted0
+       \/ accepted1' # accepted1
+       \/ state' # state
+       \/ completed' # completed
+       \/ verification' # verification
+       \/ delivery' # delivery
+
+NonTerminalCanProgress ==
+    state \notin StableTerminalStates => ENABLED ProductiveNext
 
 Accepted0Monotonic == [][accepted0 \subseteq accepted0']_vars
 Accepted1Monotonic == [][accepted1 \subseteq accepted1']_vars

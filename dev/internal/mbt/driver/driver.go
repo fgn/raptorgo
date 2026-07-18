@@ -67,8 +67,14 @@ func ValidateSchedule(value schedule.Schedule) error {
 	if value.V != 1 || value.Model != "ObjectDecoderModel" || value.Cfg == "" {
 		return errors.New("mbt: invalid schedule header")
 	}
+	if len(value.GraphDigest) != 64 {
+		return errors.New("mbt: schedule has no 64-hex graph digest")
+	}
+	if _, err := hex.DecodeString(value.GraphDigest); err != nil {
+		return errors.New("mbt: schedule graph digest is not hexadecimal")
+	}
 	switch value.Fixture {
-	case "two-block", "one-block", "zero-length":
+	case "two-block", "one-block", "rank-deficient", "zero-length":
 	default:
 		return fmt.Errorf("mbt: unknown fixture %q", value.Fixture)
 	}
@@ -76,9 +82,16 @@ func ValidateSchedule(value schedule.Schedule) error {
 		return fmt.Errorf("mbt: schedule has %d steps", len(value.Steps))
 	}
 	finalizations := 0
+	decodeFailure := false
 	for index, step := range value.Steps {
-		if len(step.Expect.Events) == 0 || step.Expect.State == "" || step.Expect.Result == "" || len(step.ModelActions) == 0 {
+		if len(step.Expect.Events) == 0 || step.Expect.State == "" || step.Expect.Result == "" ||
+			!step.Expect.CompletedPresent || len(step.ModelEdges) == 0 {
 			return fmt.Errorf("mbt: step %d has incomplete oracle", index)
+		}
+		for _, edge := range step.ModelEdges {
+			if edge.Src == "" || edge.Action == "" || edge.Dst == "" {
+				return fmt.Errorf("mbt: step %d has incomplete model edge", index)
+			}
 		}
 		switch step.Action {
 		case "AddWait", "BlockComplete", "RejectConflict", "FinalizeVerifyEnter":
@@ -104,9 +117,29 @@ func ValidateSchedule(value schedule.Schedule) error {
 		} else if step.Callbacks != nil {
 			return fmt.Errorf("mbt: step %d has callbacks outside finalization", index)
 		}
+		decodeFailure = decodeFailure || step.Action == "DecodeFail"
 	}
 	if finalizations > 1 {
 		return errors.New("mbt: schedule has multiple finalizations")
+	}
+	switch value.Cfg {
+	case "A":
+		if value.Fixture != "two-block" || decodeFailure {
+			return errors.New("mbt: cfg A requires the two-block non-decode fixture")
+		}
+	case "B":
+		if decodeFailure != (value.Fixture == "rank-deficient") {
+			return errors.New("mbt: cfg B DecodeFail and rank-deficient fixture must coincide")
+		}
+		if value.Fixture != "one-block" && value.Fixture != "rank-deficient" {
+			return errors.New("mbt: cfg B requires one-block or rank-deficient fixture")
+		}
+	case "construct":
+		if value.Fixture != "zero-length" {
+			return errors.New("mbt: construct cfg requires zero-length fixture")
+		}
+	default:
+		return fmt.Errorf("mbt: unknown cfg %q", value.Cfg)
 	}
 	return nil
 }
@@ -170,11 +203,10 @@ type fixture struct {
 }
 
 func buildFixture(value schedule.Schedule, callbacks schedule.Callbacks) (*fixture, error) {
-	decodeFixture := hasAction(value, "DecodeFail")
 	if value.Fixture == "two-block" {
 		return buildTwoBlock(callbacks)
 	}
-	if decodeFixture {
+	if value.Fixture == "rank-deficient" {
 		return buildDecodeFailure(callbacks)
 	}
 	return buildOneBlock(callbacks)
@@ -414,15 +446,6 @@ func validateCallbacks(callbacks *schedule.Callbacks) error {
 		return errors.New("invalid reentrant add count")
 	}
 	return nil
-}
-
-func hasAction(value schedule.Schedule, action string) bool {
-	for _, step := range value.Steps {
-		if step.Action == action {
-			return true
-		}
-	}
-	return false
 }
 
 func checkError(result string, err error, exactDecode bool) error {

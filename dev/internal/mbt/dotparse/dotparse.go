@@ -56,11 +56,47 @@ func Parse(reader io.Reader) (Graph, error) {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 64*1024), 8*1024*1024)
 	lineNumber := 0
+	depth := 0
+	sawHeader, sawCluster, closed := false, false, false
 	for scanner.Scan() {
 		lineNumber++
 		line := strings.TrimSpace(scanner.Text())
-		if line == "" || shouldIgnore(line) {
+		if line == "" {
 			continue
+		}
+		if !sawHeader {
+			if line != "strict digraph DiskGraph {" {
+				return Graph{}, fmt.Errorf("dotparse: line %d: missing strict DiskGraph header", lineNumber)
+			}
+			sawHeader, depth = true, 1
+			continue
+		}
+		if closed {
+			return Graph{}, fmt.Errorf("dotparse: line %d: content after graph close", lineNumber)
+		}
+		if line == "subgraph cluster_graph {" {
+			if depth != 1 || sawCluster {
+				return Graph{}, fmt.Errorf("dotparse: line %d: misplaced cluster", lineNumber)
+			}
+			sawCluster, depth = true, 2
+			continue
+		}
+		if line == "}" {
+			if depth < 1 {
+				return Graph{}, fmt.Errorf("dotparse: line %d: unmatched close brace", lineNumber)
+			}
+			depth--
+			closed = depth == 0
+			continue
+		}
+		if depth == 1 && (strings.HasPrefix(line, "node [") || strings.HasPrefix(line, "nodesep=")) {
+			continue
+		}
+		if depth == 2 && (strings.HasPrefix(line, "color=") || strings.HasPrefix(line, "{rank = same;")) {
+			continue
+		}
+		if depth != 2 {
+			return Graph{}, fmt.Errorf("dotparse: line %d: statement outside cluster", lineNumber)
 		}
 		if strings.Contains(line, " -> ") {
 			edge, err := parseEdge(line)
@@ -77,9 +113,13 @@ func Parse(reader io.Reader) (Graph, error) {
 		if !ok {
 			return Graph{}, fmt.Errorf("dotparse: line %d: unsupported statement %q", lineNumber, line)
 		}
-		label, err := labelAttribute(attributes)
+		parsedAttributes, err := parseAttributes(attributes)
 		if err != nil {
 			return Graph{}, fmt.Errorf("dotparse: line %d: %w", lineNumber, err)
+		}
+		label, ok := parsedAttributes["label"]
+		if !ok {
+			return Graph{}, fmt.Errorf("dotparse: line %d: missing label attribute", lineNumber)
 		}
 		state, err := parseState(label)
 		if err != nil {
@@ -89,12 +129,15 @@ func Parse(reader io.Reader) (Graph, error) {
 			return Graph{}, fmt.Errorf("dotparse: line %d: duplicate node %s", lineNumber, id)
 		}
 		graph.States[id] = state
-		if hasFilledStyle(attributes) {
+		if parsedAttributes["style"] == "filled" {
 			graph.Inits = append(graph.Inits, id)
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return Graph{}, fmt.Errorf("dotparse: scan: %w", err)
+	}
+	if !sawHeader || !sawCluster || !closed || depth != 0 {
+		return Graph{}, errors.New("dotparse: incomplete graph envelope")
 	}
 	if len(graph.States) == 0 {
 		return Graph{}, errors.New("dotparse: graph has no states")
@@ -124,12 +167,6 @@ func Parse(reader io.Reader) (Graph, error) {
 	return graph, nil
 }
 
-func shouldIgnore(line string) bool {
-	return line == "strict digraph DiskGraph {" || line == "subgraph cluster_graph {" || line == "}" ||
-		strings.HasPrefix(line, "node [") || strings.HasPrefix(line, "nodesep=") ||
-		strings.HasPrefix(line, "color=") || strings.HasPrefix(line, "{rank = same;")
-}
-
 func parseEdge(line string) (Edge, error) {
 	left, rest, err := consumeID(line)
 	if err != nil {
@@ -147,9 +184,13 @@ func parseEdge(line string) (Edge, error) {
 	if err != nil {
 		return Edge{}, err
 	}
-	label, err := labelAttribute(attributes)
+	parsedAttributes, err := parseAttributes(attributes)
 	if err != nil {
 		return Edge{}, err
+	}
+	label, ok := parsedAttributes["label"]
+	if !ok {
+		return Edge{}, errors.New("missing label attribute")
 	}
 	if err := validateActionLabel(label); err != nil {
 		return Edge{}, err
@@ -228,43 +269,82 @@ func bracketAttributes(input string) (string, error) {
 	return input[1:end], nil
 }
 
-func labelAttribute(attributes string) (string, error) {
-	index := strings.Index(attributes, "label=")
-	if index < 0 {
-		return "", errors.New("missing label attribute")
-	}
-	input := strings.TrimSpace(attributes[index+len("label="):])
-	if !strings.HasPrefix(input, "\"") {
-		return "", errors.New("label is not quoted")
-	}
-	end, escaped := -1, false
-	for index := 1; index < len(input); index++ {
-		if escaped {
-			escaped = false
-			continue
+func parseAttributes(input string) (map[string]string, error) {
+	result := make(map[string]string)
+	for offset := 0; ; {
+		for offset < len(input) && (input[offset] == ' ' || input[offset] == '\t' || input[offset] == ',') {
+			offset++
 		}
-		if input[index] == '\\' {
-			escaped = true
-			continue
+		if offset == len(input) {
+			return result, nil
 		}
-		if input[index] == '"' {
-			end = index
-			break
+		start := offset
+		for offset < len(input) && ((input[offset] >= 'a' && input[offset] <= 'z') ||
+			(input[offset] >= 'A' && input[offset] <= 'Z') || input[offset] == '_') {
+			offset++
+		}
+		if start == offset {
+			return nil, fmt.Errorf("invalid attribute near %q", input[offset:])
+		}
+		name := input[start:offset]
+		for offset < len(input) && (input[offset] == ' ' || input[offset] == '\t') {
+			offset++
+		}
+		if offset >= len(input) || input[offset] != '=' {
+			return nil, fmt.Errorf("attribute %s has no equals", name)
+		}
+		offset++
+		for offset < len(input) && (input[offset] == ' ' || input[offset] == '\t') {
+			offset++
+		}
+		var value string
+		if offset < len(input) && input[offset] == '"' {
+			start, escaped := offset, false
+			offset++
+			for offset < len(input) {
+				char := input[offset]
+				offset++
+				if escaped {
+					escaped = false
+					continue
+				}
+				if char == '\\' {
+					escaped = true
+					continue
+				}
+				if char == '"' {
+					decoded, err := strconv.Unquote(input[start:offset])
+					if err != nil {
+						return nil, fmt.Errorf("decode attribute %s: %w", name, err)
+					}
+					value = decoded
+					break
+				}
+			}
+			if value == "" && (offset == 0 || input[offset-1] != '"') {
+				return nil, fmt.Errorf("unterminated attribute %s", name)
+			}
+		} else {
+			start = offset
+			for offset < len(input) && input[offset] != ',' {
+				offset++
+			}
+			value = strings.TrimSpace(input[start:offset])
+			if value == "" {
+				return nil, fmt.Errorf("attribute %s has empty value", name)
+			}
+		}
+		if _, duplicate := result[name]; duplicate {
+			return nil, fmt.Errorf("duplicate attribute %s", name)
+		}
+		result[name] = value
+		for offset < len(input) && (input[offset] == ' ' || input[offset] == '\t') {
+			offset++
+		}
+		if offset < len(input) && input[offset] != ',' {
+			return nil, fmt.Errorf("attribute %s has trailing text %q", name, input[offset:])
 		}
 	}
-	if end < 0 {
-		return "", errors.New("unterminated label")
-	}
-	label, err := strconv.Unquote(input[:end+1])
-	if err != nil {
-		return "", fmt.Errorf("decode label: %w", err)
-	}
-	return label, nil
-}
-
-func hasFilledStyle(attributes string) bool {
-	compact := strings.NewReplacer(" ", "", "\t", "").Replace(attributes)
-	return strings.Contains(compact, "style=filled")
 }
 
 func validateActionLabel(label string) error {

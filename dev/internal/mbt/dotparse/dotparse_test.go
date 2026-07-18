@@ -1,6 +1,8 @@
 package dotparse
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"reflect"
 	"strings"
@@ -8,12 +10,15 @@ import (
 )
 
 func TestParsePinnedFixture(t *testing.T) {
-	fixture, err := os.Open("testdata/object-decoder-model-a.dot")
+	encoded, err := os.ReadFile("testdata/object-decoder-model-a.dot")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer fixture.Close()
-	graph, err := Parse(fixture)
+	digest := sha256.Sum256(encoded)
+	if got, want := hex.EncodeToString(digest[:]), "d6c7ca7975b70bf43c614e2c1e772ecca56b1d10a4dde625c3fd8c4dd83e6df5"; got != want {
+		t.Fatalf("raw fixture digest = %s, want %s", got, want)
+	}
+	graph, err := Parse(strings.NewReader(string(encoded)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,13 +41,46 @@ func TestParsePinnedFixture(t *testing.T) {
 	if !foundParameters || !foundParallel {
 		t.Fatalf("parameterized=%v parallel=%v", foundParameters, foundParallel)
 	}
+	wantVariables := map[string]Kind{
+		"accepted0": IntegerSet, "accepted1": IntegerSet, "state": String,
+		"completed": Integer, "verification": Integer, "delivery": Integer,
+	}
+	for id, state := range graph.States {
+		if len(state) != len(wantVariables) {
+			t.Fatalf("state %s variables = %#v", id, state)
+		}
+		for name, kind := range wantVariables {
+			if state[name].Kind != kind {
+				t.Fatalf("state %s variable %s kind=%v, want %v", id, name, state[name].Kind, kind)
+			}
+		}
+	}
+	wantActions := map[string]int{
+		"AddWait": 32, "BlockComplete": 12, "FinalizeVerifyEnter": 4,
+		"Verified": 1, "VerifyFailed": 1, "DeliverEnter": 1, "Delivered": 1,
+		"DeliveryFailed": 1, "RejectInvalid": 15, "RejectLimit": 15,
+		"RejectConflict": 16, "TerminalAdd": 5,
+	}
+	gotActions := make(map[string]int)
+	for _, edge := range graph.Edges {
+		name := strings.SplitN(edge.Action, "(", 2)[0]
+		gotActions[name]++
+	}
+	if !reflect.DeepEqual(gotActions, wantActions) {
+		t.Fatalf("action counts = %v, want %v", gotActions, wantActions)
+	}
 }
 
 func TestParseAcceptsQuotedAndUnquotedSignedIDs(t *testing.T) {
 	input := `strict digraph DiskGraph {
+node [shape=box,style=rounded]
+nodesep=0.35;
+subgraph cluster_graph {
+color="white";
 "-1" [label="/\\ state = \"receiving\"\n/\\ accepted0 = {}\n/\\ completed = 0",style = filled]
 -1 -> 2 [label="AddWait(0,0)"];
 2 [label="/\\ state = \"receiving\"\n/\\ accepted0 = {0}\n/\\ completed = 0"];
+}
 }`
 	graph, err := Parse(strings.NewReader(input))
 	if err != nil {
@@ -50,6 +88,38 @@ func TestParseAcceptsQuotedAndUnquotedSignedIDs(t *testing.T) {
 	}
 	if !reflect.DeepEqual(graph.Inits, []string{"-1"}) || graph.Edges[0].Action != "AddWait(0,0)" {
 		t.Fatalf("graph = %#v", graph)
+	}
+}
+
+func TestParseRequiresCompleteEnvelopeAndExactAttributes(t *testing.T) {
+	encoded, err := os.ReadFile("testdata/object-decoder-model-a.dot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lastBrace := strings.LastIndex(string(encoded), "}")
+	truncated := string(encoded[:lastBrace])
+	if _, err := Parse(strings.NewReader(truncated)); err == nil {
+		t.Fatal("truncated graph unexpectedly parsed")
+	}
+	xlabel := `strict digraph DiskGraph {
+subgraph cluster_graph {
+1 [xlabel="/\\ state = \"receiving\""];
+}
+}`
+	if _, err := Parse(strings.NewReader(xlabel)); err == nil || !strings.Contains(err.Error(), "missing label") {
+		t.Fatalf("xlabel-only error = %v", err)
+	}
+	notStyle := `strict digraph DiskGraph {
+subgraph cluster_graph {
+1 [label="/\\ state = \"receiving\"",notstyle=filled];
+}
+}`
+	graph, err := Parse(strings.NewReader(notStyle))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(graph.Inits) != 0 {
+		t.Fatalf("notstyle marked initial states: %v", graph.Inits)
 	}
 }
 
