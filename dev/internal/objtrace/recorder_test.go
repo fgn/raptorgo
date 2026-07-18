@@ -178,6 +178,9 @@ func TestRecorderConstructionFinalization(t *testing.T) {
 				event.Verification != test.verificationCount || event.Delivery != test.deliveryCount || !event.BindingOK {
 				t.Fatalf("event = %#v", event)
 			}
+			if event.Blocks == nil || *event.Blocks != 0 {
+				t.Fatalf("zero-length blocks = %v", event.Blocks)
+			}
 		})
 	}
 }

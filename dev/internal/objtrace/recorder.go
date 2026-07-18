@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/fgn/raptorgo"
+	"github.com/fgn/raptorgo/internal/codec"
 )
 
 var (
@@ -151,11 +152,30 @@ func (recorder *Recorder) BindDecoder(decoder *raptorgo.ObjectDecoder) {
 			panic("objtrace: terminal constructor ran no callbacks")
 		}
 	}
-	blocks := int32(recorder.oti.SourceBlocks)
+	blocks, err := BlocksForOTI(recorder.oti)
+	if err != nil {
+		panic(err)
+	}
 	recorder.appendEvent(Event{
 		V: Version, Op: op, Result: result, State: state.String(), Completed: completed,
 		Verification: verification, Delivery: delivery, BindingOK: bindingOK, Blocks: &blocks,
 	})
+}
+
+// BlocksForOTI returns the number of nonempty source blocks whose completion
+// the public decoder counts. It is zero for a zero-length object.
+func BlocksForOTI(oti raptorgo.OTI) (int32, error) {
+	var blocks int32
+	for sourceBlock := uint8(0); sourceBlock < oti.SourceBlocks; sourceBlock++ {
+		symbols, err := raptorgo.SourceBlockSymbols(oti, sourceBlock)
+		if err != nil {
+			return 0, fmt.Errorf("objtrace: count blocks: %w", err)
+		}
+		if symbols > 0 {
+			blocks++
+		}
+	}
+	return blocks, nil
 }
 
 // AddPacket delegates to the bound decoder and emits exactly one classified
@@ -204,7 +224,8 @@ func classifyAdd(state raptorgo.ObjectDecoderState, err error, completed bool) (
 		return "add_return", "delivery_error"
 	case state == raptorgo.ObjectDecodeFailed && errors.Is(err, raptorgo.ErrObjectDecoder):
 		return "decode_failure", "decode_error"
-	case state == raptorgo.ObjectReceiving && errors.Is(err, raptorgo.ErrObjectDecoder):
+	case state == raptorgo.ObjectReceiving && errors.Is(err, raptorgo.ErrObjectDecoder) &&
+		(errors.Is(err, codec.ErrDecoderDuplicateConflict) || errors.Is(err, codec.ErrDecoderSymbol)):
 		return "add_reject_conflict", "conflict"
 	case errors.Is(err, raptorgo.ErrInvalidPacket) || errors.Is(err, raptorgo.ErrInvalidPayloadID) || errors.Is(err, raptorgo.ErrInvalidOTI):
 		return "add_reject_invalid", "invalid"

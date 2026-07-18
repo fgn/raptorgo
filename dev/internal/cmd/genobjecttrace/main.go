@@ -1,37 +1,15 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 
 	"github.com/fgn/raptorgo"
+	"github.com/fgn/raptorgo/dev/internal/objtrace"
 	"github.com/fgn/raptorgo/internal/codec"
 )
-
-type observation struct {
-	operation, result                 string
-	state                             raptorgo.ObjectDecoderState
-	completed, verification, delivery uint32
-	bindingOK                         bool
-}
-
-type recorder struct {
-	decoder                *raptorgo.ObjectDecoder
-	oti                    raptorgo.OTI
-	context                string
-	want                   []byte
-	verification, delivery uint32
-	observations           []observation
-}
-
-type traceCorpus struct {
-	blocks uint32
-	trace  []observation
-}
 
 func main() {
 	output := flag.String("output", "", "output TLA+ data module")
@@ -50,20 +28,22 @@ func main() {
 	if module == "" {
 		panic(fmt.Sprintf("unknown scenario %q", *scenario))
 	}
-	corpus := execute(*scenario)
-	if err := os.WriteFile(*output, render(module, corpus), 0o644); err != nil {
+	blocks, events := execute(*scenario)
+	rendered, err := objtrace.RenderTLA(module, blocks, events)
+	must(err)
+	if err := os.WriteFile(*output, rendered, 0o644); err != nil {
 		panic(err)
 	}
 }
 
-func execute(scenario string) traceCorpus {
+func execute(scenario string) (int32, []objtrace.Event) {
 	if scenario == "decode-fail" {
 		return executeDecodeFailure()
 	}
 	return executeFinalization(scenario)
 }
 
-func executeFinalization(scenario string) traceCorpus {
+func executeFinalization(scenario string) (int32, []objtrace.Event) {
 	oti := raptorgo.OTI{
 		TransferLength: 13, SymbolSize: 4, SourceBlocks: 2, SubBlocks: 2, SymbolAlignment: 1,
 	}
@@ -85,78 +65,54 @@ func executeFinalization(scenario string) traceCorpus {
 		}
 	}
 
-	record := &recorder{oti: oti, context: "generation-6330", want: want}
+	var verificationError, deliveryError error
+	switch scenario {
+	case "deliver":
+	case "verify-fail":
+		verificationError = errors.New("injected verification failure")
+	case "delivery-fail":
+		deliveryError = errors.New("injected delivery failure")
+	default:
+		panic(fmt.Sprintf("unknown finalization scenario %q", scenario))
+	}
+	record := objtrace.NewRecorder(oti, "generation-6330", want)
 	decoder, err := raptorgo.NewObjectDecoder(
 		oti,
 		raptorgo.DefaultLimits(),
-		record.context,
-		func(request raptorgo.VerificationRequest) error {
-			record.verification++
-			candidate, readErr := io.ReadAll(request.Object)
-			bindingOK := readErr == nil && request.OTI == oti &&
-				request.Context == record.context && request.Length == uint64(len(want)) &&
-				bytes.Equal(candidate, want)
-			record.observe("verify_enter", "ok", bindingOK)
-			if scenario == "verify-fail" {
-				return errors.New("injected verification failure")
-			}
-			if !bindingOK {
-				return errors.New("verification binding mismatch")
-			}
-			return nil
-		},
-		func(object raptorgo.VerifiedObject) error {
-			bindingOK := object.OTI == oti && object.Context == record.context && bytes.Equal(object.Bytes, want)
-			record.observe("verified", "ok", bindingOK)
-			record.delivery++
-			record.observe("deliver_enter", "ok", bindingOK)
-			if scenario == "delivery-fail" {
-				return errors.New("injected delivery failure")
-			}
-			if !bindingOK {
-				return errors.New("delivery binding mismatch")
-			}
-			return nil
-		},
+		"generation-6330",
+		record.Verifier(verificationError),
+		record.Deliverer(deliveryError),
 	)
 	must(err)
-	record.decoder = decoder
-	record.observe("init", "ok", true)
+	record.BindDecoder(decoder)
 
 	for index, packet := range packets[:len(packets)-1] {
-		state, addErr := decoder.AddPacket(packet)
+		state, addErr := record.AddPacket(packet)
 		if addErr != nil || state != raptorgo.ObjectReceiving {
 			panic(fmt.Sprintf("pre-final add %d state=%s error=%v", index, state, addErr))
 		}
-		operation := "add_wait"
-		if index == 1 {
-			operation = "block_complete"
-		}
-		record.observe(operation, "ok", true)
 	}
 
-	state, err := decoder.AddPacket(packets[len(packets)-1])
-	wantState, wantError, result := raptorgo.ObjectDelivered, error(nil), "ok"
+	state, err := record.AddPacket(packets[len(packets)-1])
+	wantState, wantError := raptorgo.ObjectDelivered, error(nil)
 	switch scenario {
 	case "verify-fail":
-		wantState, wantError, result = raptorgo.ObjectVerificationFailed, raptorgo.ErrObjectVerification, "verification_error"
+		wantState, wantError = raptorgo.ObjectVerificationFailed, raptorgo.ErrObjectVerification
 	case "delivery-fail":
-		wantState, wantError, result = raptorgo.ObjectDeliveryFailed, raptorgo.ErrObjectDelivery, "delivery_error"
+		wantState, wantError = raptorgo.ObjectDeliveryFailed, raptorgo.ErrObjectDelivery
 	}
 	if state != wantState || (wantError == nil && err != nil) || (wantError != nil && !errors.Is(err, wantError)) {
 		panic(fmt.Sprintf("final add state=%s error=%v", state, err))
 	}
-	record.observe("add_return", result, true)
 
-	state, err = decoder.AddPacket(packets[0])
+	state, err = record.AddPacket(packets[0])
 	if state != wantState || !errors.Is(err, raptorgo.ErrObjectTerminal) {
 		panic(fmt.Sprintf("terminal add state=%s error=%v", state, err))
 	}
-	record.observe("terminal_add", "terminal", true)
-	return traceCorpus{blocks: uint32(oti.SourceBlocks), trace: record.observations}
+	return traceBlocks(record), record.Events()
 }
 
-func executeDecodeFailure() traceCorpus {
+func executeDecodeFailure() (int32, []objtrace.Event) {
 	oti := raptorgo.OTI{
 		TransferLength: 10, SymbolSize: 1, SourceBlocks: 1, SubBlocks: 1, SymbolAlignment: 1,
 	}
@@ -168,21 +124,20 @@ func executeDecodeFailure() traceCorpus {
 	limits.MaxRetainedSymbols = 11
 	limits.MaxRepairSymbolsPerBlock = 1
 	limits.MaxDecodeAttempts = 1
-	record := &recorder{oti: oti, context: "decode-failure-6330", want: want}
+	record := objtrace.NewRecorder(oti, "decode-failure-6330", want)
 	decoder, err := raptorgo.NewObjectDecoder(
 		oti,
 		limits,
-		record.context,
-		func(raptorgo.VerificationRequest) error {
+		"decode-failure-6330",
+		record.VerifierFunc(func(raptorgo.VerificationRequest) error {
 			panic("rank-deficient trace unexpectedly invoked verification")
-		},
-		func(raptorgo.VerifiedObject) error {
+		}),
+		record.DelivererFunc(func(raptorgo.VerifiedObject) error {
 			panic("rank-deficient trace unexpectedly invoked delivery")
-		},
+		}),
 	)
 	must(err)
-	record.decoder = decoder
-	record.observe("init", "ok", true)
+	record.BindDecoder(decoder)
 
 	var firstPacket []byte
 	for esi := uint32(319); esi <= 328; esi++ {
@@ -191,75 +146,33 @@ func executeDecodeFailure() traceCorpus {
 		if firstPacket == nil {
 			firstPacket = append([]byte(nil), packet...)
 		}
-		state, addErr := decoder.AddPacket(packet)
+		state, addErr := record.AddPacket(packet)
 		if addErr != nil || state != raptorgo.ObjectReceiving {
 			panic(fmt.Sprintf("deficient ESI %d state=%s error=%v", esi, state, addErr))
 		}
-		record.observe("add_wait", "ok", true)
 	}
 
 	packet, err := encoder.Packet(0, 329, 1, false)
 	must(err)
-	state, err := decoder.AddPacket(packet)
+	state, err := record.AddPacket(packet)
 	if state != raptorgo.ObjectDecodeFailed || !errors.Is(err, raptorgo.ErrObjectDecoder) ||
 		!errors.Is(err, codec.ErrDecoderAttemptLimit) {
 		panic(fmt.Sprintf("decode failure state=%s error=%v", state, err))
 	}
-	record.observe("decode_failure", "decode_error", true)
 
-	state, err = decoder.AddPacket(firstPacket)
+	state, err = record.AddPacket(firstPacket)
 	if state != raptorgo.ObjectDecodeFailed || !errors.Is(err, raptorgo.ErrObjectTerminal) {
 		panic(fmt.Sprintf("decode-failed terminal add state=%s error=%v", state, err))
 	}
-	record.observe("terminal_add", "terminal", true)
-	return traceCorpus{blocks: uint32(oti.SourceBlocks), trace: record.observations}
+	return traceBlocks(record), record.Events()
 }
 
-func (record *recorder) observe(operation, result string, bindingOK bool) {
-	if record.decoder == nil {
-		if operation != "init" {
-			panic("callback observed before decoder publication")
-		}
-		return
+func traceBlocks(record *objtrace.Recorder) int32 {
+	events := record.Events()
+	if len(events) == 0 || events[0].Blocks == nil {
+		panic("object trace has no initial blocks field")
 	}
-	record.observations = append(record.observations, observation{
-		operation:    operation,
-		result:       result,
-		state:        record.decoder.State(),
-		completed:    record.decoder.CompletedBlocks(),
-		verification: record.verification,
-		delivery:     record.delivery,
-		bindingOK:    bindingOK,
-	})
-}
-
-func render(module string, corpus traceCorpus) []byte {
-	var output bytes.Buffer
-	fmt.Fprintf(&output, "---------------- MODULE %s ----------------\n", module)
-	fmt.Fprintln(&output, "EXTENDS Naturals, Sequences")
-	fmt.Fprintf(&output, "\nImplementationBlocks == %d\n", corpus.blocks)
-	fmt.Fprintln(&output, "\nImplementationTrace == <<")
-	for index, event := range corpus.trace {
-		comma := ","
-		if index+1 == len(corpus.trace) {
-			comma = ""
-		}
-		fmt.Fprintf(
-			&output,
-			"    [op |-> %q, result |-> %q, state |-> %q, completed |-> %d, verification |-> %d, delivery |-> %d, bindingOK |-> %s]%s\n",
-			event.operation, event.result, event.state.String(), event.completed,
-			event.verification, event.delivery, tlaBool(event.bindingOK), comma,
-		)
-	}
-	fmt.Fprintln(&output, ">>\n\n=====================================================================")
-	return output.Bytes()
-}
-
-func tlaBool(value bool) string {
-	if value {
-		return "TRUE"
-	}
-	return "FALSE"
+	return *events[0].Blocks
 }
 
 func must(err error) {

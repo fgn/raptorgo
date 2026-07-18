@@ -108,8 +108,8 @@ func (event Event) Validate() error {
 	if event.Completed > math.MaxInt32 || event.Verification > math.MaxInt32 || event.Delivery > math.MaxInt32 {
 		return errors.New("objtrace: counter exceeds int32")
 	}
-	if event.Blocks != nil && *event.Blocks < 1 {
-		return fmt.Errorf("objtrace: blocks must be positive, got %d", *event.Blocks)
+	if event.Blocks != nil && *event.Blocks < 0 {
+		return fmt.Errorf("objtrace: blocks must be nonnegative, got %d", *event.Blocks)
 	}
 	if event.SBN != nil && *event.SBN < 0 {
 		return fmt.Errorf("objtrace: negative SBN %d", *event.SBN)
@@ -247,8 +247,8 @@ func RenderTLA(module string, blocks int32, events []Event) ([]byte, error) {
 	if !modulePattern.MatchString(module) {
 		return nil, fmt.Errorf("objtrace: invalid TLA module token %q", module)
 	}
-	if blocks < 1 {
-		return nil, fmt.Errorf("objtrace: blocks must be positive, got %d", blocks)
+	if blocks < 0 {
+		return nil, fmt.Errorf("objtrace: blocks must be nonnegative, got %d", blocks)
 	}
 	if err := ValidateTrace(events); err != nil {
 		return nil, err
