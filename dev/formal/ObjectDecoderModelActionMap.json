@@ -1,0 +1,15 @@
+{"v":1,"actions":[
+  {"model":"AddWait","trace":"AddWait"},
+  {"model":"BlockComplete","trace":"BlockComplete"},
+  {"model":"FinalizeVerifyEnter","trace":"VerifyEnter"},
+  {"model":"Verified","trace":"Verified"},
+  {"model":"VerifyFailed","trace":"FinalizeVerifyFailed"},
+  {"model":"DeliverEnter","trace":"DeliverEnter"},
+  {"model":"Delivered","trace":"FinalizeDelivered"},
+  {"model":"DeliveryFailed","trace":"FinalizeDeliveryFailed"},
+  {"model":"RejectInvalid","trace":"RejectInvalid"},
+  {"model":"RejectLimit","trace":"RejectLimit"},
+  {"model":"RejectConflict","trace":"RejectConflict"},
+  {"model":"TerminalAdd","trace":"TerminalReject"},
+  {"model":"DecodeFail","trace":"DecodeFailure"}
+]}
