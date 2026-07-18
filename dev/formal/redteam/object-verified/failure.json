@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "signature": {
+    "kind": "callback",
+    "action": "FinalizeVerifyEnter",
+    "expected": "none",
+    "actual": "callback-error"
+  },
+  "failureStep": 3,
+  "originalSteps": 7,
+  "minimizedSteps": 4,
+  "attempts": 13,
+  "strictSchedule": true,
+  "traceAvailable": true
+}

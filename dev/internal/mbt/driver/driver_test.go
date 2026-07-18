@@ -2,12 +2,14 @@ package driver
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/fgn/raptorgo"
 	"github.com/fgn/raptorgo/dev/internal/mbt/schedule"
+	"github.com/fgn/raptorgo/dev/internal/objtrace"
 	"github.com/fgn/raptorgo/internal/codec"
 )
 
@@ -164,6 +166,53 @@ func TestCommittedSchedules(t *testing.T) {
 		if _, err := Run(value); err != nil {
 			t.Fatalf("%s: %v", path, err)
 		}
+	}
+}
+
+func TestCommittedRedTeamEvidence(t *testing.T) {
+	schedules := []struct {
+		path, fingerprint string
+	}{
+		{"../../../formal/redteam/object-verified/seeded-seven-step.json", "b6b4bb37bd42"},
+		{"../../../formal/redteam/object-verified/minimized.json", "066f3d9c54f7"},
+	}
+	for _, test := range schedules {
+		value, err := ReadScheduleFile(test.path)
+		if err != nil {
+			t.Fatalf("%s: %v", test.path, err)
+		}
+		result, err := Run(value)
+		if err != nil {
+			t.Fatalf("%s: clean implementation: %v", test.path, err)
+		}
+		fingerprint, err := objtrace.ShortFingerprint(result.Events)
+		if err != nil {
+			t.Fatalf("%s: fingerprint: %v", test.path, err)
+		}
+		if fingerprint != test.fingerprint {
+			t.Fatalf("%s: fingerprint = %s, want %s", test.path, fingerprint, test.fingerprint)
+		}
+	}
+
+	const tracePath = "../../../formal/redteam/object-verified/trace/bug.ndjson"
+	file, err := os.Open(tracePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, readErr := objtrace.ReadNDJSON(file)
+	closeErr := file.Close()
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	fingerprint, err := objtrace.ShortFingerprint(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fingerprint != "c6b02e883311" {
+		t.Fatalf("bug trace fingerprint = %s", fingerprint)
 	}
 }
 

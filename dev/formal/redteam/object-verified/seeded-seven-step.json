@@ -1,0 +1,178 @@
+{
+  "v": 1,
+  "model": "ObjectDecoderModel",
+  "cfg": "A",
+  "fixture": "two-block",
+  "graphDigest": "53e5e6253fe6fd30c69e38e137a206c18328a2b9a8cc1428bd7c1c98d5574a35",
+  "steps": [
+    {
+      "action": "AddWait",
+      "sbn": 1,
+      "esi": 0,
+      "expect": {
+        "state": "receiving",
+        "completed": 0,
+        "result": "ok",
+        "events": [
+          "add_wait"
+        ]
+      },
+      "modelEdges": [
+        {
+          "src": "-7026174232243225298",
+          "action": "AddWait(1,0)",
+          "dst": "-6863540220333340008"
+        }
+      ]
+    },
+    {
+      "action": "AddWait",
+      "sbn": 0,
+      "esi": 0,
+      "expect": {
+        "state": "receiving",
+        "completed": 0,
+        "result": "ok",
+        "events": [
+          "add_wait"
+        ]
+      },
+      "modelEdges": [
+        {
+          "src": "-6863540220333340008",
+          "action": "AddWait(0,0)",
+          "dst": "4963453690857399649"
+        }
+      ]
+    },
+    {
+      "action": "AddWait",
+      "sbn": 0,
+      "esi": 0,
+      "expect": {
+        "state": "receiving",
+        "completed": 0,
+        "result": "ok",
+        "events": [
+          "add_wait"
+        ]
+      },
+      "modelEdges": [
+        {
+          "src": "4963453690857399649",
+          "action": "AddWait(0,0)",
+          "dst": "4963453690857399649"
+        }
+      ]
+    },
+    {
+      "action": "AddWait",
+      "sbn": 1,
+      "esi": 0,
+      "expect": {
+        "state": "receiving",
+        "completed": 0,
+        "result": "ok",
+        "events": [
+          "add_wait"
+        ]
+      },
+      "modelEdges": [
+        {
+          "src": "4963453690857399649",
+          "action": "AddWait(1,0)",
+          "dst": "4963453690857399649"
+        }
+      ]
+    },
+    {
+      "action": "BlockComplete",
+      "sbn": 0,
+      "esi": 1,
+      "expect": {
+        "state": "receiving",
+        "completed": 1,
+        "result": "ok",
+        "events": [
+          "block_complete"
+        ]
+      },
+      "modelEdges": [
+        {
+          "src": "4963453690857399649",
+          "action": "BlockComplete(0,1)",
+          "dst": "-7631671612543649020"
+        }
+      ]
+    },
+    {
+      "action": "AddWait",
+      "sbn": 1,
+      "esi": 0,
+      "expect": {
+        "state": "receiving",
+        "completed": 1,
+        "result": "ok",
+        "events": [
+          "add_wait"
+        ]
+      },
+      "modelEdges": [
+        {
+          "src": "-7631671612543649020",
+          "action": "AddWait(1,0)",
+          "dst": "-7631671612543649020"
+        }
+      ]
+    },
+    {
+      "action": "FinalizeVerifyEnter",
+      "sbn": 1,
+      "esi": 1,
+      "callbacks": {
+        "verify": "ok",
+        "deliver": "ok",
+        "deliverReentrantAdds": 1
+      },
+      "expect": {
+        "state": "delivered",
+        "completed": 2,
+        "result": "ok",
+        "events": [
+          "verify_enter",
+          "verified",
+          "deliver_enter",
+          "terminal_add",
+          "add_return"
+        ]
+      },
+      "modelEdges": [
+        {
+          "src": "-7631671612543649020",
+          "action": "FinalizeVerifyEnter(1,1)",
+          "dst": "6214496982951772985"
+        },
+        {
+          "src": "6214496982951772985",
+          "action": "Verified",
+          "dst": "-5209296289851285675"
+        },
+        {
+          "src": "-5209296289851285675",
+          "action": "DeliverEnter",
+          "dst": "-7965053716514586011"
+        },
+        {
+          "src": "-7965053716514586011",
+          "action": "TerminalAdd",
+          "dst": "-7965053716514586011"
+        },
+        {
+          "src": "-7965053716514586011",
+          "action": "Delivered",
+          "dst": "5934704981143394471"
+        }
+      ]
+    }
+  ]
+}
