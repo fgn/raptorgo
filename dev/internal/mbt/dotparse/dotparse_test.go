@@ -134,6 +134,9 @@ func TestParseRejectsUnsupportedDOTSurface(t *testing.T) {
 		{"rank grammar", "{rank = same; -7026174232243225298;}", "{rank = maybe; -7026174232243225298;}"},
 		{"node attribute", ",style = filled]", ",style = filled,evil=true]"},
 		{"edge attribute", `,color="black",fontcolor="black"]`, `,color="black",fontcolor="black",evil="true"]`},
+		{"leading attribute comma", `[label=`, `[,label=`},
+		{"doubled attribute comma", ",style = filled]", ",,style = filled]"},
+		{"trailing attribute comma", ",style = filled]", ",style = filled,]"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

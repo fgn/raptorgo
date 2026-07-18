@@ -315,7 +315,7 @@ func bracketAttributes(input string) (string, error) {
 func parseAttributes(input string) (map[string]string, error) {
 	result := make(map[string]string)
 	for offset := 0; ; {
-		for offset < len(input) && (input[offset] == ' ' || input[offset] == '\t' || input[offset] == ',') {
+		for offset < len(input) && (input[offset] == ' ' || input[offset] == '\t') {
 			offset++
 		}
 		if offset == len(input) {
@@ -386,6 +386,16 @@ func parseAttributes(input string) (map[string]string, error) {
 		}
 		if offset < len(input) && input[offset] != ',' {
 			return nil, fmt.Errorf("attribute %s has trailing text %q", name, input[offset:])
+		}
+		if offset < len(input) {
+			offset++
+			separator := offset
+			for offset < len(input) && (input[offset] == ' ' || input[offset] == '\t') {
+				offset++
+			}
+			if offset == len(input) || input[offset] == ',' {
+				return nil, fmt.Errorf("invalid attribute separator near %q", input[separator-1:])
+			}
 		}
 	}
 }
