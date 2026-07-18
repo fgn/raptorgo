@@ -29,6 +29,10 @@ func main() {
 	must(closeErr)
 	schedules, err := schedule.Build(graph, *cfg, *fixture)
 	must(err)
+	covered := schedule.CoveredEdges(schedules)
+	if len(covered) != len(graph.Edges) {
+		panic(fmt.Errorf("genschedules: covered %d of %d model edges", len(covered), len(graph.Edges)))
+	}
 	parent, base := filepath.Dir(*output), filepath.Base(*output)
 	must(os.MkdirAll(parent, 0o755))
 	staging, err := os.MkdirTemp(parent, "."+base+".staging-")
@@ -51,6 +55,7 @@ func main() {
 	for _, named := range schedules {
 		fmt.Println(filepath.Join(*output, named.Name))
 	}
+	fmt.Printf("summary edges=%d covered=%d paths=%d\n", len(graph.Edges), len(covered), len(schedules))
 }
 
 func replaceDirectory(staging, output string) error {
