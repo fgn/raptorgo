@@ -132,8 +132,10 @@ module-by-module boundary.
 
 ## CI split
 
-`task ci` runs formatting, vet, pure-Go dependency checks, tests, 386, race,
-benchmark corpus smoke, TLA positive/negative checks, and external oracles.
-`task test:release` adds maximum-domain solves, large Rust vectors, K=1025
-repair recovery, and the powered recovery profile. `govulncheck` is available
-as `task lint:govulncheck` and is run at final/release checkpoints.
+`task ci` runs formatting, vet, `govulncheck`, pure-Go dependency checks, tests,
+386, checkptr, race, fuzz and benchmark smoke, Java-free generated-artifact and
+Oracle 1 gates, and the external Rust/C++ oracles. `task verify` adds the
+Java-17/TLC positive, negative, trace-replay, model-generation, and Oracle 2
+gates; the nightly workflow runs that full formal tier. `task test:release`
+adds maximum-domain solves, large Rust vectors, K=1025 repair recovery, and the
+powered recovery profile.

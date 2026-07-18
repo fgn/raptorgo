@@ -36,6 +36,7 @@ they are not edges in the two packet-driven DOT graphs.
 | Constructor witnesses | 3 schedules | Successful, verification-failed, and delivery-failed zero-length construction outcomes are checked separately. |
 | Oracle 1 | 38/38 schedules on the production Go API | After every public operation, the driver checks state, completed-block count, the closed error-sentinel class both positively and negatively, event order, and callback binding. |
 | Oracle 2 | `tracereplay: passed 38/38 traces`; 16/16 action coverage | Traces emitted by all 38 Oracle-1 executions also satisfy the TLA+ trace spec. |
+| Seeded fault | seven steps reduced to four in 13 attempts; exact artifacts reproduced | An omitted `ObjectVerified` transition is caught by Oracle 1, minimized without changing its full sentinel-aware signature, and rejected by TLC at `TraceComplete`. |
 
 The seven deterministic negative operators are `drop-step`, `forge-binding`,
 `early-deliver`, `skip-verify`, `resurrect`, `forge-completion`, and
@@ -204,23 +205,43 @@ delivery reentrant add state=decoded error=raptorgo: object decoder is terminal:
 ```
 
 Deterministic ddmin reduced the schedule from seven to four steps in 13
-attempts. The artifact declared `strictSchedule=true`, its schedule SHA-256 was
+attempts. The committed artifact declares `strictSchedule=true`; its schedule
+SHA-256 is
 `870ea532e0f3155bd3d72e40c7c31ba59905835ab220906b7641741ae06b1a34`,
-and the buggy partial-trace fingerprint was `c6b02e883311` (NDJSON SHA-256
-`cbba3fa181816f762de2b8e580b7372192aa647bcbc22fe7a7193d574948497f`).
-The runner printed this directly executable repro shape:
+and the committed buggy partial trace has fingerprint `c6b02e883311` and
+NDJSON SHA-256
+`cbba3fa181816f762de2b8e580b7372192aa647bcbc22fe7a7193d574948497f`.
+The minimized schedule is a valid Oracle 1 repro, but not a connected model
+path: ddmin removes operations without synthesizing replacement graph edges.
+
+This Java-free task applies the exact fault patch only inside a temporary Git
+archive, reruns Oracle 1 and ddmin, and byte-compares the regenerated schedule,
+metadata, and trace with the committed evidence:
+
+```sh
+task redteam:object-verified
+```
+
+With the clean implementation, the committed minimized schedule instead passes
+and produces fingerprint `066f3d9c54f7`:
 
 ```sh
 go -C dev run ./internal/cmd/mbtrun \
-  -schedules /tmp/raptorgo-trace-redteam/failures/A-seeded-seven-step/minimized.json
+  -schedules formal/redteam/object-verified/minimized.json
 ```
 
-That command reproduced the same failure at relative step 3. Independently,
-TLC rejected the buggy partial trace with exactly
-`Error: Temporal property TraceComplete was violated.` After restoring the
-assignment, the same minimized schedule passed with trace fingerprint
-`066f3d9c54f7`; `git diff --quiet -- object_decoder.go`, the root tests, and the
-focused dev driver tests all passed.
+The full formal gate independently requires the committed faulty partial trace
+to be rejected exactly once with
+`Error: Temporal property TraceComplete was violated.`:
+
+```sh
+task verify:trace:redteam
+```
+
+After the original experiment restored the assignment,
+`git diff --quiet -- object_decoder.go`, the root tests, and the focused dev
+driver tests all passed. The isolated reproduction task never edits the live
+worktree.
 
 ## Limitations and claim risks
 
