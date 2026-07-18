@@ -5,6 +5,35 @@ Audience: a coding agent implementing this without further context. Read
 code. Everything in this plan lives under `dev/` (the nested development
 module); the production module API and behavior must not change.
 
+## Implementation status and binding corrections (2026-07-18)
+
+This plan is implemented on `formal/trace-validation-bridge`. The executable
+gates and the measured evidence ledger in
+`dev/formal/trace-validation-log.md` are authoritative where exploratory text
+below differs from production behavior discovered during implementation. The
+binding corrections are:
+
+- trace `Blocks` is the number of **nonempty** source blocks, matching
+  `CompletedBlocks`; it is zero for a zero-length object, not the OTI `Z`;
+- the checked source-packet fuzz target accepts object/layout seeds and
+  generates valid packets, so `-fuzz-corpus` replays that real schema rather
+  than claiming malformed packet-byte ingestion;
+- cfg B selects `one-block` for normal paths and `rank-deficient` only for a
+  path containing `DecodeFail`; one fixture cannot truthfully realize both;
+- the exact TLC 1.8.0 model mutation marker is
+  `Error: Action property EveryNextTransitionAllowed is violated.`;
+- the reverse-direction claim is edge coverage of the two exact bounded DOT
+  dumps: every dumped edge has a selected realizable witness. It is not every
+  behavior or every path;
+- DOT drift requires `-workers 1 -fp 0 -seed 1`; schedules retain exact
+  `(source, action, destination)` triples and the parsed graph digest;
+- the four legacy positive replay wrappers were retired after corpus replay
+  became the gate; their generated data modules remain byte-drift checked.
+
+The implementation also added a strict replayable ddmin failure artifact and
+recorded the required temporary `ObjectVerified` red-team fault. No production
+mutation was committed.
+
 ## Goal
 
 Upgrade the formal evidence from "a handful of hand-authored Go traces
@@ -187,7 +216,7 @@ Edge cases the recorder must handle:
 
 ### 1.3 Converter: `dev/internal/cmd/trace2tla`
 
-`trace2tla -input trace.ndjson -module <Name> -blocks <Z> -output <file>`
+`trace2tla -input trace.ndjson -module <Name> -blocks <nonempty> -output <file>`
 renders exactly the format `genobjecttrace.render` produces today
 (`ImplementationBlocks`, `ImplementationTrace` as a TLA sequence of
 records). Rules:
@@ -220,10 +249,11 @@ by the classifier automatically.)
    Command: `dev/internal/cmd/traceharvest -output <dir>` writes one
    `.ndjson` per execution, named by fingerprint (1.6).
 2. **Fuzz-corpus harvest**: `traceharvest -fuzz-corpus` replays the checked
-   in `testdata/fuzz/FuzzObjectCodecSourcePacketRoundTrip` corpus (and the
-   go-fuzz cache dir if `-cache` is passed) through the recorder-wrapped
-   decoder. Corrupted inputs that fail `ParseEncodingPacket` become
-   `add_reject_invalid` events — those traces are valuable, keep them.
+   in dev-module `testdata/fuzz/FuzzObjectCodecSourcePacketRoundTrip` corpus
+   (and the matching target cache dir if `-cache` is passed) through the
+   recorder-wrapped decoder. This target's actual schema is object bytes plus
+   layout seeds and generates valid source packets; malformed packet-byte
+   rejection remains covered by the deterministic harvest scenarios.
 3. **e2e harvest** (follow-up, separate repo): `raptorgo-e2e` gets the same
    recorder wrapper and ships `.ndjson` artifacts; out of scope here except
    that the schema above is the contract.
@@ -447,10 +477,10 @@ is exploration evidence. Instead:
 **Deliverable: `dev/formal/ObjectDecoderModel.tla`** — a new explorable
 model whose every action corresponds to exactly one public-API-triggerable
 step, at the same abstraction level as `ObjectDecoderTraceSpec`. The MBT
-claim then is: every behavior of `ObjectDecoderModel` (bounded constants)
-maps to a driver run whose observed event sequence classifies to the same
-action sequence (WS3 classifier) and whose harvested trace passes WS2
-replay. Additionally, a TLC refinement check
+claim then is: every edge in each exact bounded `ObjectDecoderModel` graph
+has a selected driver witness whose observed event sequence classifies to the
+corresponding action sequence (WS3 classifier) and whose harvested trace
+passes WS2 replay. Additionally, a TLC refinement check
 (`ObjectDecoderModel => DecoderLifecycle`-style mapping) is desirable but
 optional; note it as stretch.
 
@@ -517,8 +547,9 @@ for TLC.
 Generation command (nightly, Java):
 
 ```
-dev/scripts/tlc.sh -noGenerateSpecTE -dump dot,actionlabels /tmp/.../model.dot \
-    ObjectDecoderModel.tla -config ObjectDecoderModelMBT.cfg
+dev/scripts/tlc.sh -workers 1 -fp 0 -seed 1 -noGenerateSpecTE \
+    -dump dot,actionlabels /tmp/.../model.dot \
+    ObjectDecoderModel.tla -config ObjectDecoderModelA.cfg
 ```
 
 Facts about the pinned TLC v1.8.0 dot output the parser may rely on
@@ -700,9 +731,9 @@ Committed artifacts: `ObjectDecoderModel.tla`, both cfgs + mutation cfg,
 `dev/formal/mbt/schedules/**` (generated, deterministic), the dotparse
 test fixture. Nightly job:
 
-1. `verify:tla` additions: model-check `ObjectDecoderModelMBT.cfg` (cfg A)
-   and cfg B; mutation cfg in `verify:tla:negative` pinned to
-   `Error: Temporal property EveryNextTransitionAllowed is violated.`
+1. `verify:tla` additions: model-check `ObjectDecoderModelA.cfg` and
+   `ObjectDecoderModelB.cfg`; mutation cfg in `verify:tla:negative` pinned to
+   `Error: Action property EveryNextTransitionAllowed is violated.`
    (match the existing PlannerProgress pinning style; confirm exact TLC
    message wording on first run and pin whatever v1.8.0 emits).
 2. `mbt:generate` — dot dump + schedule regeneration; `git diff

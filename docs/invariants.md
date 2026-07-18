@@ -44,15 +44,28 @@ public object decoder and its unlocked callbacks.
 | DEC-4 | Delivery is reachable only after successful decode and authenticated verification. | Go tests, historical trace invariant, early-delivery negative control, and TLC `DeliveredAfterVerification`. |
 | DEC-5 | Delivered, aborted, and verification-failed states are terminal. | Go tests and TLC `TerminalStable`. |
 | DEC-6 | Rejected IDs do not mutate decoder state. | Go tests and positive trace containing a rejection. |
-| DEC-7 | Recorded Go transitions are allowed by the TLA+ model. | Generated trace replay through TLC. |
-| DEC-8 | Every required action remains in `Next`, and every `Next` transition is one of the independently specified exact outcomes. | TLC `NonTerminalCanProgress`, `EveryNextTransitionAllowed`, and a forged-delivery fault-injection control that must fail the exact action property. |
+| DEC-7 | Recorded Go transitions are allowed by the TLA+ trace model. | TLC replay of 24 harvested traces / 140 classified events, covering 16/16 manifest actions. |
+| DEC-8 | Every nonterminal bounded model state enables a productive transition, and every `Next` transition is one of the independently specified exact outcomes. | TLC `NonTerminalCanProgress`, `EveryNextTransitionAllowed`, and `AdversarialSkipVerify`, which must fail with `Error: Action property EveryNextTransitionAllowed is violated.` |
 | DEC-9 | Failed pre-ready, wrong-phase, and post-terminal calls preserve the projected state. | Go-generated rejected-call trace replay through TLC. |
 | DEC-10 | The public object decoder exposes `decoded` before verification, `verified` before delivery, and a terminal `decode-failed` state after an unrecoverable bounded attempt. | Production-generated success/failure traces, exact callback counters, terminal re-add checks, and forged-state negative controls. |
+| DEC-11 | Every edge in each exact committed bounded `ObjectDecoderModel` graph has a selected, realizable production witness. | A: 21 states, 104 edges, 29 schedules; B: 8 states, 15 edges, 6 schedules; structured edge-triple equality, graph digests, Oracle 1, and Oracle 2. Three additional schedules cover the zero-length constructor outcomes. |
+| DEC-12 | The trace checker rejects all applicable members of the closed negative-operator set for the committed corpus. | 205/205 deterministic mutants rejected with the exact `TraceComplete` marker; all seven operators must apply somewhere or the gate fails. |
 
 The lifecycle model uses `Cardinality(accepted) >= Required` only as an abstract
 readiness predicate. The concrete codec uses matrix rank/solvability and is
 checked independently against a polynomial rank oracle; cardinality alone is
 never treated as RaptorQ sufficiency.
+
+DEC-11 is an edge-coverage claim over two finite dumps, not a claim that every
+behavior, path, packet sequence, or concurrent callback interleaving was
+explored. Oracle 1 checks the production API's state, completion count, closed
+error-sentinel class in both directions, event order, and binding after each
+call. Oracle 2 checks that the 38
+resulting finite traces satisfy the TLA+ trace abstraction. Neither is the RFC
+6330 byte-level oracle; the table, algebra, rank, and cross-implementation
+checks below own that evidence. Exact commands, hashes, model statistics, and
+limitations are recorded in
+[`dev/formal/trace-validation-log.md`](../dev/formal/trace-validation-log.md).
 
 ## RFC primitives and codec
 
@@ -82,3 +95,5 @@ The following invariants are executable gates:
   interoperability.
 - Trace validation proves only that recorded executions conform to the model.
 - Every trace checker has a malformed negative control that must be rejected.
+- Bounded model edge coverage must be reported as edge coverage of the exact
+  dumped graphs, never as coverage of every model behavior.

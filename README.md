@@ -180,6 +180,17 @@ The implementation is checked in independent layers:
 9. a pinned mutation-testing gate over critical resource, wire, GF(256), and
    partition kernels, plus broader changed-line and scheduled audits.
 
+The current public-object-decoder evidence set contains 24 harvested traces,
+140 classified lifecycle events, and all 16 actions in the closed manifest.
+All 24 traces pass TLC replay and all 205 applicable deterministic trace
+mutants are rejected by the exact `TraceComplete` property. Two bounded model graphs
+contain 104 and 15 edges; 35 generated schedules retain every one of those
+edges, and three separate constructor schedules bring the production witness
+set to 38. All 38 pass the Java-free local oracle and trace replay. The precise
+claim is that every edge in those two exact bounded dumps has a selected,
+realizable witness—not that every model behavior or production execution has
+been explored.
+
 RFC Editor erratum 5548 is applied: the maximum transfer length is
 `942574504275`.
 
@@ -195,10 +206,18 @@ over every RFC row and ESI. None of this amounts to a machine-checked
 proof of functional correctness of the Go implementation, and no such
 claim is made.
 
+The lifecycle trace/model oracles are also not RFC 6330 byte-level oracles.
+RFC source pinning, table extraction, algebraic checks, rank tests, and the
+Rust/C++ comparisons own that boundary; trace validation owns ordering,
+terminal-state, callback-binding, and model-to-production witness claims.
+
 The compact evidence index is in [`docs/invariants.md`](docs/invariants.md).
 Recovery statistics and their explicit limits are in
 [`docs/recovery.md`](docs/recovery.md). TLA scope is documented in
-the [`dev/formal` repository documentation](https://github.com/fgn/raptorgo/blob/main/dev/formal/README.md).
+the [`dev/formal` repository documentation](https://github.com/fgn/raptorgo/blob/main/dev/formal/README.md),
+and the reproducible ObjectDecoder measurements, hashes, and exact failure
+messages are in
+[`dev/formal/trace-validation-log.md`](dev/formal/trace-validation-log.md).
 
 ## Development
 

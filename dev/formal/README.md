@@ -68,6 +68,54 @@ binding, and forge recovery from `decode-failed`; each must fail the exact
 this also proves those observations are made without holding the decoder mutex
 for the recorded execution.
 
+## ObjectDecoder trace validation and bounded model witnesses
+
+The data-driven trace pipeline broadens those fixed scenarios without changing
+the claim boundary. Deterministic harvesting currently retains 24 production
+traces from 27 candidates. They contain 161 raw records: 21 `init` records are
+excluded from action classification, leaving 140 classified events that cover
+all 16 actions in `coverage/actions.json`. The three `construct_final` records
+are classified. All 24 traces pass `ObjectDecoderTraceSpec`, and all 205
+applicable mutants from the seven closed operators are rejected with the exact
+`TraceComplete` marker. The gate fails if an operator has no applicable trace.
+
+The harvest includes checked Go fuzz seeds from the real
+`FuzzObjectCodecSourcePacketRoundTrip` input schema: object bytes plus normalized
+layout inputs that generate valid source packets. It does not claim to harvest
+malformed packet-byte ingestion from that target, because malformed packet
+bytes are not part of its function signature.
+
+`ObjectDecoderModel.tla` is checked under two finite configurations. A has
+`Blocks=2`, `K=2`, 105 generated / 21 distinct states, depth 8, and 104 dumped
+edges. B has `Blocks=1`, `K=1`, 16 generated / 8 distinct states, depth 5, and
+15 dumped edges. The deliberate `AdversarialSkipVerify` transition must exit
+TLC nonzero with exactly:
+
+```text
+Error: Action property EveryNextTransitionAllowed is violated.
+```
+
+Twenty-nine A schedules and six B schedules retain every structured edge triple
+in their respective exact graph dumps. Three manually authored schedules cover
+the zero-length constructor outcomes, for 38 production witnesses total. Oracle
+1 executes every schedule through the public Go API and checks state,
+completed-block count, the closed error-sentinel class both positively and
+negatively, event order, and callback binding.
+Oracle 2 replays all 38 resulting traces through TLC; the recorded run passed
+38/38 and covered 16/16 trace actions.
+
+The supported statement is only that **every edge in the two exact committed
+bounded dumps has a selected, realizable witness**. It is not a statement that
+every behavior or path was enumerated. It does not cover arbitrary repair sets,
+unbounded parameters, all packet sequences, or concurrent callback schedules.
+The model and trace oracles check lifecycle semantics; RFC byte-level behavior
+is owned by the pinned specification, algebra/rank tests, and Rust/C++
+differential evidence.
+
+Exact reproduction commands, deterministic TLC flags, graph and corpus hashes,
+the 24/140/16 and 205-case breakdowns, and the seeded-bug exercise status are in
+[`trace-validation-log.md`](trace-validation-log.md).
+
 `SparseScheduleTrace.tla` replays observations from the production sparse
 schedule owner. It checks aggregate logical backing reservation, row/column
 mapping bijections and inverses, coupled swaps, mapping-neutral row addition,
