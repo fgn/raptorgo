@@ -59,6 +59,7 @@ func TestValidationRejectsMalformedTraces(t *testing.T) {
 		name, input, contains string
 	}{
 		{"unknown-field", `{"v":1,"op":"init","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"blocks":1,"extra":1}` + "\n", "unknown field"},
+		{"duplicate-field", `{"v":99,"v":1,"op":"init","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"blocks":1}` + "\n", "duplicate object name"},
 		{"unknown-version", `{"v":2,"op":"init","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"blocks":1}` + "\n", "schema version"},
 		{"unknown-op", `{"v":1,"op":"surprise","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"blocks":1}` + "\n", "unknown operation"},
 		{"bad-token", `{"v":1,"op":"init!","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"blocks":1}` + "\n", "invalid operation token"},

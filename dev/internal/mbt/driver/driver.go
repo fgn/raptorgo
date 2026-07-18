@@ -15,10 +15,13 @@ import (
 	"github.com/fgn/raptorgo"
 	"github.com/fgn/raptorgo/dev/internal/mbt/schedule"
 	"github.com/fgn/raptorgo/dev/internal/objtrace"
+	"github.com/fgn/raptorgo/dev/internal/strictjson"
 	"github.com/fgn/raptorgo/internal/codec"
 )
 
 var injectedCallbackFailure = errors.New("mbt: injected callback failure")
+
+const maxScheduleBytes = 1 << 20
 
 // Result contains the independently replayable implementation trace.
 type Result struct {
@@ -27,7 +30,17 @@ type Result struct {
 
 // ReadSchedule strictly decodes and validates one schedule.
 func ReadSchedule(reader io.Reader) (schedule.Schedule, error) {
-	decoder := json.NewDecoder(reader)
+	encoded, err := io.ReadAll(io.LimitReader(reader, maxScheduleBytes+1))
+	if err != nil {
+		return schedule.Schedule{}, fmt.Errorf("mbt: read schedule: %w", err)
+	}
+	if len(encoded) > maxScheduleBytes {
+		return schedule.Schedule{}, fmt.Errorf("mbt: schedule exceeds %d bytes", maxScheduleBytes)
+	}
+	if err := strictjson.Check(encoded); err != nil {
+		return schedule.Schedule{}, fmt.Errorf("mbt: decode schedule: %w", err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
 	decoder.DisallowUnknownFields()
 	var value schedule.Schedule
 	if err := decoder.Decode(&value); err != nil {

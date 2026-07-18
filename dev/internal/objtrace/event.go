@@ -13,6 +13,8 @@ import (
 	"io"
 	"math"
 	"regexp"
+
+	"github.com/fgn/raptorgo/dev/internal/strictjson"
 )
 
 const (
@@ -163,6 +165,9 @@ func ReadNDJSON(reader io.Reader) ([]Event, error) {
 		line := scanner.Bytes()
 		if len(bytes.TrimSpace(line)) == 0 {
 			return nil, fmt.Errorf("objtrace: empty line %d", len(events)+1)
+		}
+		if err := strictjson.Check(line); err != nil {
+			return nil, fmt.Errorf("objtrace: line %d: %w", len(events)+1, err)
 		}
 		decoder := json.NewDecoder(bytes.NewReader(line))
 		decoder.DisallowUnknownFields()

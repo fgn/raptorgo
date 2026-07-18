@@ -101,6 +101,12 @@ func TestManifestDecoderIsStrict(t *testing.T) {
 		name, input, contains string
 	}{
 		{"unknown field", `{"v":1,"actions":[],"extra":true}`, "unknown field"},
+		{"duplicate top-level field", `{"v":999,"v":1,"actions":[]}`, "duplicate object name"},
+		{
+			"duplicate nested field",
+			`{"v":1,"actions":[{"name":"Bogus","name":"AddWait","op":"add_wait","result":"ok","completedDelta":0}]}`,
+			"duplicate object name",
+		},
 		{
 			"missing completed delta",
 			`{"v":1,"actions":[{"name":"AddWait","op":"add_wait","result":"ok"}]}`,
@@ -113,5 +119,12 @@ func TestManifestDecoderIsStrict(t *testing.T) {
 				t.Fatalf("strict decode error = %v", err)
 			}
 		})
+	}
+}
+
+func TestManifestDecoderBoundsInput(t *testing.T) {
+	input := strings.NewReader(`{"v":1,"padding":"` + strings.Repeat("x", maxManifestBytes) + `"}`)
+	if _, err := ParseManifest(input); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("oversize manifest error = %v", err)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/fgn/raptorgo/dev/internal/mbt/dotparse"
+	"github.com/fgn/raptorgo/dev/internal/strictjson"
 )
 
 const DepthCap = 32
@@ -570,6 +571,9 @@ func (expect *Expect) UnmarshalJSON(encoded []byte) error {
 		Completed *uint32  `json:"completed"`
 		Result    string   `json:"result"`
 		Events    []string `json:"events"`
+	}
+	if err := strictjson.Check(encoded); err != nil {
+		return err
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(encoded)))
 	decoder.DisallowUnknownFields()

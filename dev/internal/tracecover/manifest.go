@@ -10,6 +10,8 @@ import (
 	"io"
 	"os"
 	"regexp"
+
+	"github.com/fgn/raptorgo/dev/internal/strictjson"
 )
 
 const (
@@ -18,6 +20,7 @@ const (
 	// ExpectedActionCount is deliberately pinned so deleting a semantic branch
 	// from both a manifest and a report cannot silently reduce the denominator.
 	ExpectedActionCount = 16
+	maxManifestBytes    = 256 << 10
 )
 
 var (
@@ -96,7 +99,17 @@ func ParseManifest(reader io.Reader) (Manifest, error) {
 		Actions []wireAction `json:"actions"`
 	}
 
-	decoder := json.NewDecoder(reader)
+	encoded, err := io.ReadAll(io.LimitReader(reader, maxManifestBytes+1))
+	if err != nil {
+		return Manifest{}, fmt.Errorf("read: %w", err)
+	}
+	if len(encoded) > maxManifestBytes {
+		return Manifest{}, fmt.Errorf("manifest exceeds %d bytes", maxManifestBytes)
+	}
+	if err := strictjson.Check(encoded); err != nil {
+		return Manifest{}, err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
 	decoder.DisallowUnknownFields()
 	var wire wireManifest
 	if err := decoder.Decode(&wire); err != nil {

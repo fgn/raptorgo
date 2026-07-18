@@ -223,6 +223,22 @@ func TestReadScheduleRequiresExplicitCompleted(t *testing.T) {
 	}
 }
 
+func TestReadScheduleRejectsDuplicateNamesAndOversizeInput(t *testing.T) {
+	tests := []string{
+		`{"v":999,"v":1}`,
+		`{"v":1,"steps":[{"expect":{"state":"wrong","state":"receiving"}}]}`,
+	}
+	for _, input := range tests {
+		if _, err := ReadSchedule(strings.NewReader(input)); err == nil || !strings.Contains(err.Error(), "duplicate object name") {
+			t.Errorf("ReadSchedule(%s) = %v", input, err)
+		}
+	}
+	oversize := strings.NewReader(`{"padding":"` + strings.Repeat("x", maxScheduleBytes) + `"}`)
+	if _, err := ReadSchedule(oversize); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("oversize schedule error = %v", err)
+	}
+}
+
 func TestValidateScheduleBindsDecodeFixture(t *testing.T) {
 	value := schedule.Schedule{
 		V: 1, Model: "ObjectDecoderModel", Cfg: "B", Fixture: "one-block", GraphDigest: testGraphDigest,
