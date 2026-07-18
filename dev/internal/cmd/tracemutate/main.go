@@ -14,6 +14,7 @@ import (
 func main() {
 	input := flag.String("input", "", "input NDJSON trace")
 	output := flag.String("output", "", "output directory")
+	allowEmpty := flag.Bool("allow-empty", false, "accept a valid trace to which no mutation applies")
 	flag.Parse()
 	if *input == "" || *output == "" || flag.NArg() != 0 {
 		flag.Usage()
@@ -26,6 +27,9 @@ func main() {
 	mutants, err := tracemutate.Generate(events)
 	must(err)
 	if len(mutants) == 0 {
+		if *allowEmpty {
+			return
+		}
 		panic("tracemutate: no operators apply")
 	}
 	must(os.MkdirAll(*output, 0o755))

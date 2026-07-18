@@ -14,6 +14,8 @@ vars:
   OBJECT_DECODER_REDTEAM_MINIMIZED_SHA256: 870ea532e0f3155bd3d72e40c7c31ba59905835ab220906b7641741ae06b1a34
   OBJECT_DECODER_REDTEAM_FAILURE_SHA256: 44e1ba271ec2d9ec004783b5e31f5ed5d2e5d54dcf569bd0f5c1a32f89d9b064
   OBJECT_DECODER_REDTEAM_TRACE_SHA256: cbba3fa181816f762de2b8e580b7372192aa647bcbc22fe7a7193d574948497f
+  OBJECT_DECODER_MUTANT_COUNT: 205
+  OBJECT_DECODER_MUTANTS_SHA256: b36f315497f58ed7c926df5fc0a31e80b0c54fd6e2b1e81b0768d127de363053
   LIBRAPTORQ_COMMIT: a394b22af6e8fc742ce88eacf9af5343ecded9d7
   LIBRAPTORQ_ARCHIVE_SHA256: 2cc35b7b68fb3d7624d1be2660099be75373c018e6d3cb84203a231b37485892
 
@@ -277,6 +279,8 @@ tasks:
         go -C dev run ./internal/cmd/traceharvest \
           -fuzz-corpus -output "$temporary/objectdecoder" -max 64 \
           >"$temporary/traceharvest.log"
+        test "$(tail -n 1 "$temporary/traceharvest.log")" = \
+          'summary candidates=30 kept=24 dropped=6 maximum=64'
         go -C dev run ./internal/cmd/genwitness \
           -corpus "$temporary/objectdecoder" \
           -manifest formal/coverage/actions.json \
@@ -541,9 +545,40 @@ tasks:
 
   verify:trace:negative:
     desc: require every applicable machine-generated trace mutant to fail TraceComplete exactly
-    deps: [install:tla2tools]
+    deps: [install:tla2tools, verify:trace:mutants]
     cmds:
-      - go -C dev run ./internal/cmd/tracereplay -corpus formal/corpus/objectdecoder -negative -j 4
+      - |-
+        set -eu
+        temporary=$(mktemp -d)
+        trap 'rm -rf "$temporary"' EXIT
+        output="$temporary/replay.out"
+        go -C dev run ./internal/cmd/tracereplay \
+          -corpus formal/corpus/objectdecoder -negative -j 4 | tee "$output"
+        test "$(tail -n 1 "$output")" = \
+          'tracereplay: passed {{.OBJECT_DECODER_MUTANT_COUNT}}/{{.OBJECT_DECODER_MUTANT_COUNT}} mutants'
+
+  verify:trace:mutants:
+    desc: pin the exact deterministic ObjectDecoder trace-mutant set without Java
+    cmds:
+      - |-
+        set -eu
+        temporary=$(mktemp -d)
+        trap 'rm -rf "$temporary"' EXIT
+        for input in dev/formal/corpus/objectdecoder/*.ndjson; do
+          name=$(basename "$input" .ndjson)
+          go -C dev run ./internal/cmd/tracemutate \
+            -input "formal/corpus/objectdecoder/$name.ndjson" \
+            -output "$temporary/$name" -allow-empty >/dev/null
+        done
+        count=$(find "$temporary" -type f -name '*.ndjson' | wc -l)
+        test "$count" -eq '{{.OBJECT_DECODER_MUTANT_COUNT}}'
+        digest=$(
+          cd "$temporary"
+          find . -type f -name '*.ndjson' -print0 | sort -z | \
+            xargs -0 sha256sum | sha256sum | awk '{print $1}'
+        )
+        test "$digest" = '{{.OBJECT_DECODER_MUTANTS_SHA256}}'
+        echo "trace mutants: count=$count sha256=$digest"
 
   redteam:object-verified:
     desc: reproduce the seeded ObjectVerified fault in an isolated archive and compare its evidence
@@ -688,6 +723,7 @@ tasks:
       - task: verify:module
       - task: verify:generated
       - task: verify:trace:coverage
+      - task: verify:trace:mutants
       - task: mbt:smoke
       - task: redteam:object-verified
 
