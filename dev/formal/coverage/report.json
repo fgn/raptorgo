@@ -1,0 +1,232 @@
+{
+  "v": 1,
+  "traces": 40,
+  "events": 208,
+  "covered": 16,
+  "total": 16,
+  "actions": [
+    {
+      "name": "AddWait",
+      "op": "add_wait",
+      "result": "ok",
+      "completedDelta": 0,
+      "count": 53,
+      "corpus": 39,
+      "witness": 14,
+      "fingerprints": [
+        "397eb0f6311c",
+        "4bd30aa18d71",
+        "54e21db34ce7"
+      ]
+    },
+    {
+      "name": "BlockComplete",
+      "op": "block_complete",
+      "result": "ok",
+      "completedDelta": 1,
+      "count": 8,
+      "corpus": 7,
+      "witness": 1,
+      "fingerprints": [
+        "01744213a876",
+        "397eb0f6311c",
+        "54e21db34ce7"
+      ]
+    },
+    {
+      "name": "VerifyEnter",
+      "op": "verify_enter",
+      "result": "ok",
+      "completedDelta": 1,
+      "count": 32,
+      "corpus": 20,
+      "witness": 12,
+      "fingerprints": [
+        "01744213a876",
+        "397eb0f6311c",
+        "4bd30aa18d71"
+      ]
+    },
+    {
+      "name": "Verified",
+      "op": "verified",
+      "result": "ok",
+      "completedDelta": 0,
+      "count": 29,
+      "corpus": 19,
+      "witness": 10,
+      "fingerprints": [
+        "01744213a876",
+        "397eb0f6311c",
+        "4bd30aa18d71"
+      ]
+    },
+    {
+      "name": "DeliverEnter",
+      "op": "deliver_enter",
+      "result": "ok",
+      "completedDelta": 0,
+      "count": 29,
+      "corpus": 19,
+      "witness": 10,
+      "fingerprints": [
+        "01744213a876",
+        "397eb0f6311c",
+        "4bd30aa18d71"
+      ]
+    },
+    {
+      "name": "FinalizeDelivered",
+      "op": "add_return",
+      "result": "ok",
+      "completedDelta": 0,
+      "count": 25,
+      "corpus": 18,
+      "witness": 7,
+      "fingerprints": [
+        "01744213a876",
+        "397eb0f6311c",
+        "4bd30aa18d71"
+      ]
+    },
+    {
+      "name": "FinalizeVerifyFailed",
+      "op": "add_return",
+      "result": "verification_error",
+      "completedDelta": 0,
+      "count": 3,
+      "corpus": 1,
+      "witness": 2,
+      "fingerprints": [
+        "9318ce693e12"
+      ]
+    },
+    {
+      "name": "FinalizeDeliveryFailed",
+      "op": "add_return",
+      "result": "delivery_error",
+      "completedDelta": 0,
+      "count": 4,
+      "corpus": 1,
+      "witness": 3,
+      "fingerprints": [
+        "5b8df0f3f50d"
+      ]
+    },
+    {
+      "name": "DecodeFailure",
+      "op": "decode_failure",
+      "result": "decode_error",
+      "completedDelta": 0,
+      "count": 2,
+      "corpus": 1,
+      "witness": 1,
+      "fingerprints": [
+        "9aebd686371a"
+      ]
+    },
+    {
+      "name": "TerminalReject",
+      "op": "terminal_add",
+      "result": "terminal",
+      "completedDelta": 0,
+      "count": 6,
+      "corpus": 4,
+      "witness": 2,
+      "fingerprints": [
+        "4bd30aa18d71",
+        "901531cef419",
+        "9aebd686371a"
+      ]
+    },
+    {
+      "name": "RejectInvalid",
+      "op": "add_reject_invalid",
+      "result": "invalid",
+      "completedDelta": 0,
+      "count": 7,
+      "corpus": 6,
+      "witness": 1,
+      "fingerprints": [
+        "01744213a876",
+        "5dee8fe02296",
+        "a30ada6bc5d8"
+      ]
+    },
+    {
+      "name": "RejectLimit",
+      "op": "add_reject_limit",
+      "result": "limit",
+      "completedDelta": 0,
+      "count": 2,
+      "corpus": 1,
+      "witness": 1,
+      "fingerprints": [
+        "ba31398018f2"
+      ]
+    },
+    {
+      "name": "RejectConflict",
+      "op": "add_reject_conflict",
+      "result": "conflict",
+      "completedDelta": 0,
+      "count": 2,
+      "corpus": 1,
+      "witness": 1,
+      "fingerprints": [
+        "ad6c3b58cd50"
+      ]
+    },
+    {
+      "name": "ConstructDelivered",
+      "op": "construct_final",
+      "result": "ok",
+      "completedDelta": 0,
+      "count": 2,
+      "corpus": 1,
+      "witness": 1,
+      "fingerprints": [
+        "4a07d4c8cce4"
+      ]
+    },
+    {
+      "name": "ConstructVerifyFailed",
+      "op": "construct_final",
+      "result": "verification_error",
+      "completedDelta": 0,
+      "count": 2,
+      "corpus": 1,
+      "witness": 1,
+      "fingerprints": [
+        "6df6deb72bd2"
+      ]
+    },
+    {
+      "name": "ConstructDeliveryFailed",
+      "op": "construct_final",
+      "result": "delivery_error",
+      "completedDelta": 0,
+      "count": 2,
+      "corpus": 1,
+      "witness": 1,
+      "fingerprints": [
+        "618f37bf61e1"
+      ]
+    }
+  ],
+  "uncovered": [],
+  "corpus": {
+    "traces": 24,
+    "events": 140,
+    "covered": 16,
+    "total": 16,
+    "uncovered": []
+  },
+  "witness": {
+    "traces": 16,
+    "events": 68,
+    "covered": 16,
+    "total": 16,
+    "uncovered": []
+  }
+}
