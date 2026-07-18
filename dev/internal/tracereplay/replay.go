@@ -22,6 +22,8 @@ const (
 	// MaxJobs prevents callers from accidentally starting an unsafe number of
 	// memory-hungry TLC processes.
 	MaxJobs = 4
+	// MaxCorpusEntries bounds flat-directory discovery before allocation.
+	MaxCorpusEntries = 4096
 
 	replayDataModule = "ObjectDecoderReplayData"
 	replayModuleFile = "ObjectDecoderReplay.tla"
@@ -226,9 +228,20 @@ func resolveConfig(config Config) (resolvedConfig, error) {
 }
 
 func discoverInputs(corpus string) ([]traceInput, error) {
-	entries, err := os.ReadDir(corpus)
+	directory, err := os.Open(corpus)
 	if err != nil {
-		return nil, fmt.Errorf("tracereplay: read corpus %s: %w", corpus, err)
+		return nil, fmt.Errorf("tracereplay: open corpus %s: %w", corpus, err)
+	}
+	entries, readErr := directory.ReadDir(MaxCorpusEntries + 1)
+	closeErr := directory.Close()
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return nil, fmt.Errorf("tracereplay: read corpus %s: %w", corpus, readErr)
+	}
+	if closeErr != nil {
+		return nil, fmt.Errorf("tracereplay: close corpus %s: %w", corpus, closeErr)
+	}
+	if len(entries) > MaxCorpusEntries {
+		return nil, fmt.Errorf("tracereplay: corpus has more than %d entries", MaxCorpusEntries)
 	}
 	inputs := make([]traceInput, 0, len(entries))
 	for _, entry := range entries {

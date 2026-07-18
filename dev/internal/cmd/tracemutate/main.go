@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"flag"
 	"fmt"
 	"os"
@@ -20,25 +19,37 @@ func main() {
 		flag.Usage()
 		os.Exit(2)
 	}
-	encoded, err := os.ReadFile(*input)
+	file, err := os.Open(*input)
 	must(err)
-	events, err := objtrace.ReadNDJSON(bytes.NewReader(encoded))
+	events, readErr := objtrace.ReadNDJSON(file)
+	closeErr := file.Close()
+	must(readErr)
+	must(closeErr)
+	count := 0
+	err = tracemutate.Walk(events, func(mutant tracemutate.Mutant) error {
+		if count == 0 {
+			if mkdirErr := os.MkdirAll(*output, 0o755); mkdirErr != nil {
+				return mkdirErr
+			}
+		}
+		count++
+		encoded, encodeErr := objtrace.CanonicalNDJSON(mutant.Events)
+		if encodeErr != nil {
+			return encodeErr
+		}
+		path := filepath.Join(*output, mutant.ID+".ndjson")
+		if writeErr := os.WriteFile(path, encoded, 0o644); writeErr != nil {
+			return writeErr
+		}
+		fmt.Println(path)
+		return nil
+	})
 	must(err)
-	mutants, err := tracemutate.Generate(events)
-	must(err)
-	if len(mutants) == 0 {
+	if count == 0 {
 		if *allowEmpty {
 			return
 		}
 		panic("tracemutate: no operators apply")
-	}
-	must(os.MkdirAll(*output, 0o755))
-	for _, mutant := range mutants {
-		encoded, encodeErr := objtrace.CanonicalNDJSON(mutant.Events)
-		must(encodeErr)
-		path := filepath.Join(*output, mutant.ID+".ndjson")
-		must(os.WriteFile(path, encoded, 0o644))
-		fmt.Println(path)
 	}
 }
 

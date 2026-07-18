@@ -2,6 +2,7 @@ package objtrace
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 )
@@ -74,6 +75,18 @@ func TestValidationRejectsMalformedTraces(t *testing.T) {
 				t.Fatalf("error = %v, want substring %q", err, test.contains)
 			}
 		})
+	}
+}
+
+func TestReadNDJSONRejectsOversizeInputBeforeUnboundedRead(t *testing.T) {
+	encoded, err := CanonicalNDJSON(validTrace()[:1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := io.MultiReader(bytes.NewReader(encoded), strings.NewReader(strings.Repeat(" ", MaxEncodedBytes)))
+	_, err = ReadNDJSON(input)
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("oversize error = %v", err)
 	}
 }
 

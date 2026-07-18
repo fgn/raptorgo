@@ -92,6 +92,24 @@ func TestRunNegativeRejectsVacuousOperatorCorpus(t *testing.T) {
 	}
 }
 
+func TestWalkNegativeCasesEnforcesCaseCeiling(t *testing.T) {
+	corpus := t.TempDir()
+	path := filepath.Join(corpus, "delivered.ndjson")
+	writeDeliveredTrace(t, path)
+	inputs := []traceInput{{name: "delivered.ndjson", path: path}}
+	visited := 0
+	err := walkNegativeCases(inputs, 1, func(string, []objtrace.Event) error {
+		visited++
+		return nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "more than 1 negative cases") {
+		t.Fatalf("ceiling error = %v", err)
+	}
+	if visited != 1 {
+		t.Fatalf("visited = %d, want 1", visited)
+	}
+}
+
 func writeDeliveredTrace(t *testing.T, path string) {
 	t.Helper()
 	blocks := int32(1)

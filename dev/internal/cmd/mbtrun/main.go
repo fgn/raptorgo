@@ -14,6 +14,8 @@ import (
 	"github.com/fgn/raptorgo/dev/internal/objtrace"
 )
 
+const maxScheduleEntries = 4096
+
 func main() {
 	schedules := flag.String("schedules", "", "schedule file or directory")
 	traces := flag.String("traces", "", "optional output directory for NDJSON traces")
@@ -97,21 +99,41 @@ func shellQuote(value string) string {
 }
 
 func schedulePaths(root string) ([]string, error) {
-	info, err := os.Stat(root)
+	return schedulePathsLimit(root, maxScheduleEntries)
+}
+
+func schedulePathsLimit(root string, maximum int) ([]string, error) {
+	info, err := os.Lstat(root)
 	if err != nil {
 		return nil, err
 	}
 	if !info.IsDir() {
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("mbtrun: schedule input %s is not a regular file", root)
+		}
 		return []string{root}, nil
 	}
 	var paths []string
+	visited := 0
 	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".json" {
-			paths = append(paths, path)
+		visited++
+		if visited > maximum {
+			return fmt.Errorf("mbtrun: schedule tree has more than %d entries", maximum)
 		}
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			return nil
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			return infoErr
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("mbtrun: schedule %s is not a regular file", path)
+		}
+		paths = append(paths, path)
 		return nil
 	})
 	sort.Strings(paths)

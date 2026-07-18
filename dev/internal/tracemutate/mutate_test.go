@@ -2,6 +2,7 @@ package tracemutate
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/fgn/raptorgo/dev/internal/objtrace"
@@ -114,6 +115,23 @@ func TestGenerateDoesNotAliasInput(t *testing.T) {
 	}
 	if *input[0].Blocks != 2 || input[0].Op != "init" {
 		t.Fatalf("input aliased: %#v", input[0])
+	}
+}
+
+func TestWalkMatchesGenerateStableOrder(t *testing.T) {
+	generated, err := Generate(deliveredTrace())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var walked []Mutant
+	if err := Walk(deliveredTrace(), func(mutant Mutant) error {
+		walked = append(walked, mutant)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(walked, generated) {
+		t.Fatalf("walked mutants differ from Generate")
 	}
 }
 

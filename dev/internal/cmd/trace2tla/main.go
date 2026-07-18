@@ -34,13 +34,17 @@ func run(arguments []string) error {
 		return fmt.Errorf("trace2tla: blocks %d exceed int32", *blocks)
 	}
 
-	encoded, err := os.ReadFile(*input)
+	file, err := os.Open(*input)
 	if err != nil {
-		return fmt.Errorf("trace2tla: read %s: %w", *input, err)
+		return fmt.Errorf("trace2tla: open %s: %w", *input, err)
 	}
-	events, err := objtrace.ReadNDJSON(bytes.NewReader(encoded))
-	if err != nil {
-		return fmt.Errorf("trace2tla: %w", err)
+	events, readErr := objtrace.ReadNDJSON(file)
+	closeErr := file.Close()
+	if readErr != nil {
+		return fmt.Errorf("trace2tla: %w", readErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("trace2tla: close %s: %w", *input, closeErr)
 	}
 	firstBlocks := events[0].Blocks
 	if firstBlocks == nil || int32(*blocks) != *firstBlocks {

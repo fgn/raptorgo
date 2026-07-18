@@ -130,6 +130,19 @@ func TestRunRejectsUnsafeJobCountsAndEmptyCorpus(t *testing.T) {
 	}
 }
 
+func TestDiscoverInputsBoundsDirectoryBeforeAllocation(t *testing.T) {
+	corpus := t.TempDir()
+	for index := 0; index <= MaxCorpusEntries; index++ {
+		if err := os.Mkdir(filepath.Join(corpus, fmt.Sprintf("ignored-%04d", index)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err := discoverInputs(corpus)
+	if err == nil || !strings.Contains(err.Error(), "more than") {
+		t.Fatalf("discovery ceiling error = %v", err)
+	}
+}
+
 func TestFindRootFromNestedDirectory(t *testing.T) {
 	root, err := FindRoot(".")
 	if err != nil {

@@ -3,6 +3,7 @@
 package tracemutate
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
@@ -42,23 +43,34 @@ type Mutant struct {
 // deletion can leave a legal shorter execution and is therefore not a sound
 // negative control.
 func Generate(events []objtrace.Event) ([]Mutant, error) {
-	if err := objtrace.ValidateTrace(events); err != nil {
+	mutants := make([]Mutant, 0)
+	err := Walk(events, func(mutant Mutant) error {
+		mutants = append(mutants, mutant)
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
-	mutants := make([]Mutant, 0)
-	mutants = append(mutants, dropStepMutants(events)...)
-	mutants = append(mutants, forgeBindingMutants(events)...)
-	if mutant, ok := earlyDeliverMutant(events); ok {
-		mutants = append(mutants, mutant)
-	}
-	if mutant, ok := skipVerifyMutant(events); ok {
-		mutants = append(mutants, mutant)
-	}
-	mutants = append(mutants, resurrectMutants(events)...)
-	mutants = append(mutants, forgeCompletionMutants(events)...)
-	mutants = append(mutants, doubleDeliveryMutants(events)...)
-	sort.Slice(mutants, func(left, right int) bool { return mutants[left].ID < mutants[right].ID })
 	return mutants, nil
+}
+
+// Walk applies every mutation in stable ID order while retaining only the
+// current cloned trace. Callers that execute or write mutants incrementally
+// avoid Generate's intentionally materialized result set.
+func Walk(events []objtrace.Event, visit func(Mutant) error) error {
+	if visit == nil {
+		return errors.New("tracemutate: nil visitor")
+	}
+	if err := objtrace.ValidateTrace(events); err != nil {
+		return err
+	}
+	plans := mutationPlans(events)
+	for _, plan := range plans {
+		if err := visit(applyPlan(events, plan)); err != nil {
+			return fmt.Errorf("tracemutate: visit %s: %w", plan.id, err)
+		}
+	}
+	return nil
 }
 
 // AppliedOperators returns a stable set of operators represented by mutants.
@@ -76,7 +88,13 @@ func AppliedOperators(mutants []Mutant) []string {
 	return result
 }
 
-func dropStepMutants(events []objtrace.Event) []Mutant {
+type mutationPlan struct {
+	id, operator string
+	index, aux   int
+}
+
+func mutationPlans(events []objtrace.Event) []mutationPlan {
+	plans := make([]mutationPlan, 0, len(events)+16)
 	var candidates []int
 	for index := 1; index+1 < len(events); index++ {
 		switch events[index].Op {
@@ -85,99 +103,75 @@ func dropStepMutants(events []objtrace.Event) []Mutant {
 		}
 	}
 	candidates = stableCap(candidates, 8)
-	result := make([]Mutant, 0, len(candidates))
 	for _, index := range candidates {
-		mutated := clone(events)
-		mutated = append(mutated[:index], mutated[index+1:]...)
-		result = append(result, Mutant{
-			ID: fmt.Sprintf("%s-%04d", DropStep, index), Operator: DropStep, Events: mutated,
+		plans = append(plans, mutationPlan{
+			id: fmt.Sprintf("%s-%04d", DropStep, index), operator: DropStep, index: index,
 		})
 	}
-	return result
-}
-
-func forgeBindingMutants(events []objtrace.Event) []Mutant {
-	result := make([]Mutant, 0, max(0, len(events)-1))
 	// The first record belongs to Init. Forging it yields no initial states,
 	// which TLC correctly regards as an empty model rather than a TraceComplete
 	// counterexample. Mutate every replayed record so rejection remains exact.
 	for index := 1; index < len(events); index++ {
-		mutated := clone(events)
-		mutated[index].BindingOK = false
-		result = append(result, Mutant{
-			ID: fmt.Sprintf("%s-%04d", ForgeBinding, index), Operator: ForgeBinding, Events: mutated,
+		plans = append(plans, mutationPlan{
+			id: fmt.Sprintf("%s-%04d", ForgeBinding, index), operator: ForgeBinding, index: index,
 		})
 	}
-	return result
-}
-
-func earlyDeliverMutant(events []objtrace.Event) (Mutant, bool) {
 	verified, delivery := indexOf(events, "verified"), indexOf(events, "deliver_enter")
-	if verified < 0 || delivery < 0 || delivery <= verified {
-		return Mutant{}, false
+	if verified >= 0 && delivery > verified {
+		plans = append(plans, mutationPlan{id: EarlyDeliver, operator: EarlyDeliver, index: delivery, aux: verified})
+		plans = append(plans, mutationPlan{id: SkipVerify, operator: SkipVerify, index: verified})
 	}
-	mutated := clone(events)
-	event := mutated[delivery]
-	mutated = append(mutated[:delivery], mutated[delivery+1:]...)
-	mutated = insert(mutated, verified, event)
-	return Mutant{ID: EarlyDeliver, Operator: EarlyDeliver, Events: mutated}, true
-}
-
-func skipVerifyMutant(events []objtrace.Event) (Mutant, bool) {
-	verified, delivery := indexOf(events, "verified"), indexOf(events, "deliver_enter")
-	if verified < 0 || delivery < 0 || delivery <= verified {
-		return Mutant{}, false
-	}
-	mutated := clone(events)
-	mutated = append(mutated[:verified], mutated[verified+1:]...)
-	return Mutant{ID: SkipVerify, Operator: SkipVerify, Events: mutated}, true
-}
-
-func resurrectMutants(events []objtrace.Event) []Mutant {
-	result := make([]Mutant, 0)
 	for index, event := range events {
 		if event.Op != "terminal_add" {
 			continue
 		}
-		mutated := clone(events)
-		mutated[index].Op = "add_wait"
-		mutated[index].Result = "ok"
-		mutated[index].State = "receiving"
-		result = append(result, Mutant{
-			ID: fmt.Sprintf("%s-%04d", Resurrect, index), Operator: Resurrect, Events: mutated,
+		plans = append(plans, mutationPlan{
+			id: fmt.Sprintf("%s-%04d", Resurrect, index), operator: Resurrect, index: index,
 		})
 	}
-	return result
-}
-
-func forgeCompletionMutants(events []objtrace.Event) []Mutant {
-	result := make([]Mutant, 0)
 	for index, event := range events {
 		if event.Op != "verify_enter" || event.Completed == 0 {
 			continue
 		}
-		mutated := clone(events)
-		mutated[index].Completed--
-		result = append(result, Mutant{
-			ID: fmt.Sprintf("%s-%04d", ForgeCompletion, index), Operator: ForgeCompletion, Events: mutated,
+		plans = append(plans, mutationPlan{
+			id: fmt.Sprintf("%s-%04d", ForgeCompletion, index), operator: ForgeCompletion, index: index,
 		})
 	}
-	return result
-}
-
-func doubleDeliveryMutants(events []objtrace.Event) []Mutant {
-	result := make([]Mutant, 0)
 	for index, event := range events {
 		if event.Op != "deliver_enter" {
 			continue
 		}
-		mutated := clone(events)
-		mutated = insert(mutated, index+1, mutated[index])
-		result = append(result, Mutant{
-			ID: fmt.Sprintf("%s-%04d", DoubleDelivery, index), Operator: DoubleDelivery, Events: mutated,
+		plans = append(plans, mutationPlan{
+			id: fmt.Sprintf("%s-%04d", DoubleDelivery, index), operator: DoubleDelivery, index: index,
 		})
 	}
-	return result
+	sort.Slice(plans, func(left, right int) bool { return plans[left].id < plans[right].id })
+	return plans
+}
+
+func applyPlan(events []objtrace.Event, plan mutationPlan) Mutant {
+	mutated := clone(events)
+	switch plan.operator {
+	case DropStep, SkipVerify:
+		mutated = append(mutated[:plan.index], mutated[plan.index+1:]...)
+	case ForgeBinding:
+		mutated[plan.index].BindingOK = false
+	case EarlyDeliver:
+		event := mutated[plan.index]
+		mutated = append(mutated[:plan.index], mutated[plan.index+1:]...)
+		mutated = insert(mutated, plan.aux, event)
+	case Resurrect:
+		mutated[plan.index].Op = "add_wait"
+		mutated[plan.index].Result = "ok"
+		mutated[plan.index].State = "receiving"
+	case ForgeCompletion:
+		mutated[plan.index].Completed--
+	case DoubleDelivery:
+		mutated = insert(mutated, plan.index+1, mutated[plan.index])
+	default:
+		panic("unknown trace mutation operator " + plan.operator)
+	}
+	return Mutant{ID: plan.id, Operator: plan.operator, Events: mutated}
 }
 
 func indexOf(events []objtrace.Event, operation string) int {

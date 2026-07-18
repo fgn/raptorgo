@@ -22,6 +22,8 @@ const (
 	Version = 1
 	// MaxEvents bounds traces before they are handed to TLC.
 	MaxEvents = 4096
+	// MaxEncodedBytes bounds an NDJSON trace before decoding or mutation.
+	MaxEncodedBytes = 2 << 20
 )
 
 var (
@@ -158,10 +160,14 @@ func ValidateTrace(events []Event) error {
 
 // ReadNDJSON decodes one strict JSON object per nonempty line.
 func ReadNDJSON(reader io.Reader) ([]Event, error) {
-	scanner := bufio.NewScanner(reader)
+	counted := &countingReader{reader: io.LimitReader(reader, MaxEncodedBytes+1)}
+	scanner := bufio.NewScanner(counted)
 	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
 	events := make([]Event, 0)
 	for scanner.Scan() {
+		if counted.bytes > MaxEncodedBytes {
+			return nil, fmt.Errorf("objtrace: trace exceeds %d bytes", MaxEncodedBytes)
+		}
 		line := scanner.Bytes()
 		if len(bytes.TrimSpace(line)) == 0 {
 			return nil, fmt.Errorf("objtrace: empty line %d", len(events)+1)
@@ -187,6 +193,9 @@ func ReadNDJSON(reader io.Reader) ([]Event, error) {
 			return nil, fmt.Errorf("objtrace: trace has more than %d events", MaxEvents)
 		}
 	}
+	if counted.bytes > MaxEncodedBytes {
+		return nil, fmt.Errorf("objtrace: trace exceeds %d bytes", MaxEncodedBytes)
+	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("objtrace: read: %w", err)
 	}
@@ -194,6 +203,17 @@ func ReadNDJSON(reader io.Reader) ([]Event, error) {
 		return nil, err
 	}
 	return events, nil
+}
+
+type countingReader struct {
+	reader io.Reader
+	bytes  int
+}
+
+func (reader *countingReader) Read(buffer []byte) (int, error) {
+	count, err := reader.reader.Read(buffer)
+	reader.bytes += count
+	return count, err
 }
 
 // WriteNDJSON writes the canonical schema field order, one event per line.
