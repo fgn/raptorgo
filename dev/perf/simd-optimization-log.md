@@ -209,7 +209,23 @@ The round 2 validation matrix:
   `HybridTraceData.tla`; `task verify:tla` and `task verify:tla:negative`
   after extending `ExpectedExecutionWorkspace` with `ColumnGatherScratch`;
   `task verify:trace:corpus` and `task verify:trace:negative`;
-- `task mutation:gate` over the curated boundary and algebra kernels.
+- `task mutation:gate` over the curated boundary and algebra kernels;
+- `task mutation:changed` over every line this round changed. This run
+  exposed and fixed a silent gate no-op: go-mutesting's changed-line filter
+  matches the standard `+++ b/` diff header, and user-level
+  `diff.mnemonicPrefix` git config emptied it, so `mutation.sh` now forces
+  standard prefixes. With the filter working, the round's changed lines
+  produced 149 covered mutants; new tests kill 111 (multi-word
+  `AppendDenseOnes` boundary coverage, an exact component-sum pin on
+  `InactivationExecutionBackingBytes`, and substitution dependency-column
+  observer assertions), and the 38 survivors added to
+  `dev/mutation/baseline.json` are equivalent-in-practice: dense-window word
+  masks that guard bits which are provably always zero (the same defensive
+  masks live in `ForEachDenseOne`), `H > 0` fast-path conditions that cannot
+  misfire because valid RFC 6330 parameters have H >= 10, error guards on
+  calls that cannot fail for validated executor state, one capacity hint,
+  and the canonical pivot-column zeroing whose state is cross-checked by the
+  dev-module differential trace gates instead.
 
 Reproduction entry points:
 

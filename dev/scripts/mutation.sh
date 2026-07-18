@@ -6,6 +6,18 @@ tool=${GO_MUTESTING:-./bin/go-mutesting}
 workers=${MUTATION_WORKERS:-6}
 baseline=dev/mutation/baseline.json
 
+# go-mutesting's --git-diff-lines parser matches the standard "+++ b/<path>"
+# diff header. User-level git config such as diff.mnemonicPrefix or
+# diff.noprefix changes that header and silently empties the changed-line
+# filter, turning mutation:changed into a no-op. Force the standard prefixes
+# for every git invocation the tool makes.
+GIT_CONFIG_COUNT=2
+GIT_CONFIG_KEY_0=diff.mnemonicprefix
+GIT_CONFIG_VALUE_0=false
+GIT_CONFIG_KEY_1=diff.noprefix
+GIT_CONFIG_VALUE_1=false
+export GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1
+
 # go-mutesting always writes its full default report at the repository root,
 # including when no JSON logger is requested. It is intentionally not a
 # committed artifact; remove it on success, failure, or interruption so local

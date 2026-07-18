@@ -18,6 +18,234 @@
       "file": "internal/rfc6330/partition.go",
       "mutator": "numbers/incrementer",
       "line": 24
+    },
+    {
+      "id": "6d29c73755ca724d016bd243244a0682",
+      "file": "internal/codec/hybrid_execute.go",
+      "mutator": "arithmetic/base",
+      "line": 188
+    },
+    {
+      "id": "5b57a732c754997eeabf8b3827dbb786",
+      "file": "internal/codec/hybrid_execute.go",
+      "mutator": "expression/comparison",
+      "line": 254
+    },
+    {
+      "id": "9c23321c7bb72e3f2220377b9c043e68",
+      "file": "internal/codec/hybrid_execute.go",
+      "mutator": "expression/comparison",
+      "line": 344
+    },
+    {
+      "id": "ab5ee89216fc3409951da20b15d6bf92",
+      "file": "internal/codec/hybrid_execute.go",
+      "mutator": "expression/error-guard",
+      "line": 256
+    },
+    {
+      "id": "994e2acd68e93ae1e9d7d5a3363fa0dc",
+      "file": "internal/codec/hybrid_execute.go",
+      "mutator": "expression/error-guard",
+      "line": 262
+    },
+    {
+      "id": "6c5458a7c661146797af228424f443f6",
+      "file": "internal/codec/hybrid_execute.go",
+      "mutator": "expression/error-guard",
+      "line": 270
+    },
+    {
+      "id": "4e4a9430512d68827a5101c206e453c5",
+      "file": "internal/codec/hybrid_execute.go",
+      "mutator": "expression/error-guard",
+      "line": 316
+    },
+    {
+      "id": "736fd3cd5324084d15ec9b3eba628be9",
+      "file": "internal/codec/hybrid_execute.go",
+      "mutator": "expression/error-guard",
+      "line": 325
+    },
+    {
+      "id": "dccb66386e7d1c941ad41dfbe62c6440",
+      "file": "internal/codec/hybrid_execute.go",
+      "mutator": "numbers/incrementer",
+      "line": 254
+    },
+    {
+      "id": "3c33a8f56ca97394ddfb1bd33c02c03d",
+      "file": "internal/codec/hybrid_execute.go",
+      "mutator": "numbers/incrementer",
+      "line": 280
+    },
+    {
+      "id": "63bbae4dbfa01d35edf0b0719bb6e5b3",
+      "file": "internal/codec/hybrid_execute.go",
+      "mutator": "numbers/incrementer",
+      "line": 344
+    },
+    {
+      "id": "fd0095f46014692fb08f2dff424c94f7",
+      "file": "internal/codec/hybrid_execute.go",
+      "mutator": "statement/remove",
+      "line": 280
+    },
+    {
+      "id": "da6ea700f317cab97dade46fcfc05b80",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "arithmetic/base",
+      "line": 391
+    },
+    {
+      "id": "57519cf3aea7a81f9deda57fe6718974",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "arithmetic/base",
+      "line": 389
+    },
+    {
+      "id": "1cd21aebf70b084c41b6fd89b100fb5f",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "arithmetic/base",
+      "line": 394
+    },
+    {
+      "id": "586b75da0b770df26f1e3176318a5ec7",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "arithmetic/base",
+      "line": 394
+    },
+    {
+      "id": "79b85441c7678bd7cb7fd4dfd7db03e9",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "arithmetic/base",
+      "line": 394
+    },
+    {
+      "id": "eedc8a02599c57ae30da20e7719fb5f7",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "arithmetic/base",
+      "line": 395
+    },
+    {
+      "id": "a2778680c1d1d6e1fa6371a2ff149f10",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "arithmetic/bitwise",
+      "line": 395
+    },
+    {
+      "id": "0e0cff02a303d1dcc63050596fbe1d64",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "branch/if",
+      "line": 395
+    },
+    {
+      "id": "b0819829cf2d0f629cf8bec34ed875d9",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "conditional/negated",
+      "line": 394
+    },
+    {
+      "id": "027ed26d36223ffd593c57f5dc40581b",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "expression/remove",
+      "line": 394
+    },
+    {
+      "id": "ac88d1da044649d6e0800d318c1e6d35",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "numbers/decrementer",
+      "line": 389
+    },
+    {
+      "id": "3db0619d6e0bf900c3d58205c3aa14db",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "numbers/decrementer",
+      "line": 389
+    },
+    {
+      "id": "2ef618effe66def481a79b670f4c4676",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "numbers/decrementer",
+      "line": 395
+    },
+    {
+      "id": "467a53ea384a4ea12c15aad1c0713027",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "numbers/decrementer",
+      "line": 394
+    },
+    {
+      "id": "aef524613cadf14e1ac3a8af2b300490",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "numbers/decrementer",
+      "line": 394
+    },
+    {
+      "id": "3338e6ed547b2cc14f9775055ef84f40",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "numbers/decrementer",
+      "line": 394
+    },
+    {
+      "id": "43015c13d5a96c68e0c6092f4b545909",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "numbers/decrementer",
+      "line": 395
+    },
+    {
+      "id": "54f6d2f8b02fbc3d4a7ea8d348fec224",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "numbers/incrementer",
+      "line": 389
+    },
+    {
+      "id": "97211eb85474b14b13fa608d1cd440fc",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "numbers/incrementer",
+      "line": 389
+    },
+    {
+      "id": "c5df881ec857f6e9af5d8b2677d6f659",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "numbers/incrementer",
+      "line": 389
+    },
+    {
+      "id": "1355bfe62a6f06e87bcc4188aaf03b02",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "numbers/incrementer",
+      "line": 391
+    },
+    {
+      "id": "866e500dc684ea1e6f73d478c1b42637",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "numbers/incrementer",
+      "line": 394
+    },
+    {
+      "id": "574dd70effab9f9b83ebe8263bb79916",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "numbers/incrementer",
+      "line": 394
+    },
+    {
+      "id": "d1c41868d06fab357f603be596b789c1",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "numbers/incrementer",
+      "line": 394
+    },
+    {
+      "id": "564b9ac1e309fe2c6c1177556ef7f062",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "numbers/incrementer",
+      "line": 394
+    },
+    {
+      "id": "b3de8be99cf2f52b03c1f536d17f4f9e",
+      "file": "internal/matrix/hybrid_binary.go",
+      "mutator": "numbers/incrementer",
+      "line": 395
     }
   ]
 }

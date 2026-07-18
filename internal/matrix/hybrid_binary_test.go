@@ -219,6 +219,88 @@ func TestHybridBinaryAppendDenseOnesMatchesForEachDenseOne(t *testing.T) {
 	}
 }
 
+func TestHybridBinaryAppendDenseOnesCrossesWordBoundaries(t *testing.T) {
+	t.Parallel()
+
+	// A dense window wider than three 64-bit words with a non-aligned
+	// initial suffix exercises the first-word and last-word masks, the word
+	// index arithmetic, and the slot-to-column conversion on values where
+	// mutated arithmetic cannot coincide with the correct result.
+	const (
+		rows         = 6
+		columns      = 300
+		initialDense = 70
+		maxDense     = 200
+	)
+	sparse := make([][]uint16, rows)
+	var initialCells [][2]uint32
+	for row := 0; row < rows; row++ {
+		for column := uint16(row); column < columns-initialDense; column += uint16(7 + row) {
+			sparse[row] = append(sparse[row], column)
+		}
+		for column := uint32(columns - initialDense); column < columns; column++ {
+			if (column*31+uint32(row)*17)%5 == 0 {
+				initialCells = append(initialCells, [2]uint32{uint32(row), column})
+			}
+		}
+	}
+	matrix := newTestHybridBinary(t, sparse, columns, initialDense, maxDense, initialCells)
+
+	checkAllRows := func(stage string) {
+		t.Helper()
+		var scratch []uint32
+		for row := uint32(0); row < matrix.Rows(); row++ {
+			var want []uint32
+			if err := matrix.ForEachDenseOne(row, func(column uint32) bool {
+				want = append(want, column)
+				return true
+			}); err != nil {
+				t.Fatal(err)
+			}
+			got, err := matrix.AppendDenseOnes(row, scratch[:0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			scratch = got
+			if !slices.Equal(got, want) {
+				t.Fatalf("%s row %d: append=%v foreach=%v", stage, row, got, want)
+			}
+		}
+	}
+	checkAllRows("initial")
+	for freeze := 0; freeze < int(maxDense-initialDense); freeze++ {
+		if _, err := matrix.FreezeNext(); err != nil {
+			t.Fatal(err)
+		}
+		switch freeze % 3 {
+		case 0:
+			if err := matrix.SwapRows(uint32(freeze%rows), uint32((freeze+1)%rows)); err != nil {
+				t.Fatal(err)
+			}
+		case 1:
+			if err := matrix.XORDenseRows(uint32(freeze%rows), uint32((freeze+2)%rows)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		checkAllRows("after freeze")
+	}
+}
+
+func TestHybridBinaryAppendDenseOnesSingleDenseColumn(t *testing.T) {
+	t.Parallel()
+
+	matrix := newTestHybridBinary(t, [][]uint16{{0}, {1}}, 4, 1, 2, [][2]uint32{{1, 3}})
+	for row, want := range [][]uint32{nil, {3}} {
+		got, err := matrix.AppendDenseOnes(uint32(row), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(got, want) {
+			t.Fatalf("row %d: append=%v want=%v", row, got, want)
+		}
+	}
+}
+
 func TestHybridBinaryNilMutationReceiversRejectWithoutPanic(t *testing.T) {
 	t.Parallel()
 

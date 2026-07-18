@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/fgn/raptorgo/internal/gf256"
+	"github.com/fgn/raptorgo/internal/matrix"
 	"github.com/fgn/raptorgo/internal/rfc6330"
 )
 
@@ -495,6 +496,104 @@ func TestObservedInactivationExecutionUsesOwnedSnapshots(t *testing.T) {
 	}
 	if !bytes.Equal(snapshotSymbols(t, d), dBefore) {
 		t.Fatal("observer failure changed input D")
+	}
+}
+
+func TestInactivationExecutionBackingBytesMatchesComponentSum(t *testing.T) {
+	t.Parallel()
+
+	parameters, err := rfc6330.ParametersForSourceSymbols(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	planBytes, err := InactivationPlanBackingBytes(parameters.KPrime, parameters.KPrime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := PlanSourceInactivation(parameters.KPrime, planBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const symbolSize = uint32(3)
+	got, err := InactivationExecutionBackingBytes(plan, symbolSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hybridBytes, err := matrix.HybridBinaryBackingBytes(
+		plan.rows, plan.parameters.L(), plan.parameters.P(), plan.finalU, uint64(plan.vNonzeros),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	residualRows := plan.totalRows - plan.finalI
+	residualColumns := plan.parameters.L() - plan.finalI
+	solverBytes, err := gf256.SolveWorkspaceBytes(residualRows, residualColumns, symbolSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := hybridBytes +
+		uint64(plan.parameters.H)*uint64(plan.parameters.L()) +
+		uint64(plan.totalRows)*uint64(symbolSize) +
+		uint64(residualRows)*uint64(residualColumns) +
+		uint64(residualRows)*uint64(symbolSize) +
+		solverBytes +
+		uint64(residualColumns)*4 +
+		uint64(plan.parameters.L())*uint64(symbolSize)
+	if got != want {
+		t.Fatalf("execution backing = %d, want component sum %d", got, want)
+	}
+}
+
+func TestObservedSubstitutionRecordsDependencyColumns(t *testing.T) {
+	t.Parallel()
+
+	parameters, err := rfc6330.ParametersForSourceSymbols(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	planBytes, err := InactivationPlanBackingBytes(parameters.KPrime, parameters.KPrime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := PlanSourceInactivation(parameters.KPrime, planBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := sourcePlanRightHandSide(t, patternedSymbols(t, parameters.KPrime, 7), plan)
+	workspace, err := InactivationExecutionBackingBytes(plan, d.Size())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sawDependencies := false
+	if _, err := ExecuteInactivationPlanObserved(plan, d, workspace, func(observation HybridExecutionObservation) error {
+		if observation.Stage != "substitute" {
+			return nil
+		}
+		columns := observation.SubstitutionColumns
+		for index, column := range columns {
+			if column < plan.finalI || column >= plan.parameters.L() {
+				t.Fatalf("substitution column %d outside residual range", column)
+			}
+			if index > 0 && columns[index-1] >= column {
+				t.Fatalf("substitution columns not strictly increasing: %v", columns)
+			}
+		}
+		changed := !bytes.Equal(observation.SubstitutionBefore, observation.SubstitutionAfter)
+		if changed && len(columns) == 0 {
+			t.Fatalf("row %d changed without recorded dependencies", observation.SubstitutionRow)
+		}
+		if !changed && len(columns) != 0 {
+			t.Fatalf("row %d recorded dependencies %v without changing", observation.SubstitutionRow, columns)
+		}
+		if len(columns) > 0 {
+			sawDependencies = true
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !sawDependencies {
+		t.Fatal("no substitution observation carried dependency columns; assertion is vacuous")
 	}
 }
 
