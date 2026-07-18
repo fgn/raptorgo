@@ -241,3 +241,45 @@ invented. The complete existing generated-trace drift gate, positive TLC
 models/traces, and pinned negative controls were rerun to rule out regressions;
 caller-buffer aliasing and cache atomicity are covered at the Go invariant
 level where those properties exist.
+
+## Final validation matrix
+
+The final committed tree was validated with Go 1.26.5. This host's default
+`java` is Java 8, so the already-installed Temurin 17 runtime was selected
+explicitly for TLC:
+
+```sh
+TLC_JAVA=/home/fgn/.local/opt/temurin-17-jre/bin/java task ci
+MUTATION_DIFF_BASE=550acdb task mutation:changed
+task test:release
+```
+
+| Gate | Final result |
+|---|---|
+| format, tidy, vet, pure-Go/no-dependency lint | pass |
+| reachable vulnerability scan | no vulnerabilities found |
+| root and nested-development Go tests | pass |
+| statement coverage | root 85.8%; codec 78.0%; GF(256) 93.1%; matrix 87.2%; RFC primitives 92.6% |
+| curated mutation CI gate | 299 killed, 3 reviewed baseline survivors; 99.01% |
+| complete optimization diff mutation gate versus `550acdb` | 98/98 killed; 100% |
+| broad scheduled mutation discovery audit | 7,084 generated; 4,656 killed, 1,079 escaped, 1,349 not covered; 81.19% covered-code score |
+| linux/386, strict checkptr, full race detector | pass |
+| five parser/object/codec/GF(256)/matrix fuzz smoke targets | pass |
+| every object benchmark corpus at one iteration | pass |
+| RFC checksum, generated-artifact drift, production module ZIP | pass; 91 files, 217,823 bytes, no dev-only content |
+| all positive TLA models and implementation traces | pass with pinned TLC 1.8.0 and Java 17 |
+| all TLA invalid-trace and mutation negative controls | rejected for their pinned property |
+| Rust primitives/raw/object parity and bidirectional cross-decode | pass |
+| independently fetched/checksummed C++ consensus and cross-decode | pass, including pinned K=49 divergence |
+| RFC-maximum hybrid/recovery release tests and release vectors | pass |
+
+The first `task ci` attempt stopped at TLC because `/usr/bin/java` on this
+machine is Java 8. No formal check was skipped: the complete command was rerun
+from the beginning with `TLC_JAVA` pointing at Java 17 and exited successfully.
+
+The broad audit is deliberately diagnostic rather than a release gate. Its
+existing whole-repository survivors remain backlog candidates; the narrower
+baseline-aware gate proves that none lies on the 98 mutated lines introduced
+or changed by this optimization. The audit JSON and 201 MB raw mutation report
+were inspected and then deleted; their root-level names are ignored so they
+cannot reproduce the historical repository-bloat incident.
