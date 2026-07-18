@@ -230,8 +230,8 @@ func executeInactivationPlanObserved(
 			if destinationErr != nil {
 				return nil, destinationErr
 			}
-			for offset := range destination {
-				destination[offset] ^= pivotSymbol[offset]
+			if err := gf256.XOR(destination, pivotSymbol); err != nil {
+				return nil, err
 			}
 		}
 
@@ -419,8 +419,9 @@ func executeInactivationPlanObserved(
 				callbackErr = sourceErr
 				return false
 			}
-			for offset := range destination {
-				destination[offset] ^= source[offset]
+			if xorErr := gf256.XOR(destination, source); xorErr != nil {
+				callbackErr = xorErr
+				return false
 			}
 			return true
 		}); err != nil {

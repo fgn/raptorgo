@@ -121,6 +121,75 @@ func TestVectorOperationsPartialOverlap(t *testing.T) {
 	}
 }
 
+func TestVectorOperationsAcrossVectorBoundaries(t *testing.T) {
+	t.Parallel()
+
+	lengths := []int{0, 1, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129, 1_280}
+	for _, length := range lengths {
+		for _, layout := range []string{"separate", "exact", "destination-before-source", "destination-after-source"} {
+			for _, operation := range []struct {
+				name        string
+				coefficient byte
+				run         func([]byte, []byte) error
+			}{
+				{name: "XOR", coefficient: 1, run: XOR},
+				{name: "MulAdd", coefficient: 37, run: func(dst, src []byte) error {
+					return MulAdd(dst, 37, src)
+				}},
+				{name: "MulAdd-255", coefficient: 255, run: func(dst, src []byte) error {
+					return MulAdd(dst, 255, src)
+				}},
+			} {
+				var destination, source []byte
+				switch layout {
+				case "separate":
+					destination = make([]byte, length)
+					source = make([]byte, length)
+					for index := range destination {
+						destination[index] = byte(index*17 + 3)
+						source[index] = byte(index*29 + 11)
+					}
+				case "exact":
+					destination = make([]byte, length)
+					for index := range destination {
+						destination[index] = byte(index*17 + 3)
+					}
+					source = destination
+				case "destination-before-source":
+					backing := make([]byte, length+1)
+					for index := range backing {
+						backing[index] = byte(index*17 + 3)
+					}
+					destination, source = backing[:length], backing[1:]
+				case "destination-after-source":
+					backing := make([]byte, length+1)
+					for index := range backing {
+						backing[index] = byte(index*17 + 3)
+					}
+					destination, source = backing[1:], backing[:length]
+				default:
+					t.Fatal("unknown layout")
+				}
+
+				destinationBefore := bytes.Clone(destination)
+				sourceBefore := bytes.Clone(source)
+				if err := operation.run(destination, source); err != nil {
+					t.Fatalf("length=%d layout=%s operation=%s: %v", length, layout, operation.name, err)
+				}
+				for index, got := range destination {
+					want := destinationBefore[index] ^ polynomialMul(operation.coefficient, sourceBefore[index])
+					if got != want {
+						t.Fatalf(
+							"length=%d layout=%s operation=%s index=%d: got %d, want %d",
+							length, layout, operation.name, index, got, want,
+						)
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestVectorLengthMismatchDoesNotMutate(t *testing.T) {
 	t.Parallel()
 
@@ -182,4 +251,38 @@ func FuzzVectorOperations(f *testing.F) {
 			}
 		}
 	})
+}
+
+var benchmarkVectorSink byte
+
+func BenchmarkXOR1280(b *testing.B) {
+	destination := make([]byte, 1_280)
+	source := make([]byte, 1_280)
+	for index := range source {
+		source[index] = byte(index*29 + 11)
+	}
+	b.ReportAllocs()
+	b.SetBytes(int64(len(source)))
+	for b.Loop() {
+		if err := XOR(destination, source); err != nil {
+			b.Fatal(err)
+		}
+	}
+	benchmarkVectorSink = destination[0]
+}
+
+func BenchmarkMulAdd1280(b *testing.B) {
+	destination := make([]byte, 1_280)
+	source := make([]byte, 1_280)
+	for index := range source {
+		source[index] = byte(index*29 + 11)
+	}
+	b.ReportAllocs()
+	b.SetBytes(int64(len(source)))
+	for b.Loop() {
+		if err := MulAdd(destination, 37, source); err != nil {
+			b.Fatal(err)
+		}
+	}
+	benchmarkVectorSink = destination[0]
 }

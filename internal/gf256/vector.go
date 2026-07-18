@@ -15,13 +15,9 @@ func XOR(dst, src []byte) error {
 		return ErrLengthMismatch
 	}
 	if forwardWriteOverlapsSource(dst, src) {
-		for index := len(src) - 1; index >= 0; index-- {
-			dst[index] ^= src[index]
-		}
+		xorBackwardScalar(dst, src)
 	} else {
-		for index, value := range src {
-			dst[index] ^= value
-		}
+		xorForward(dst, src)
 	}
 	return nil
 }
@@ -40,13 +36,9 @@ func MulAdd(dst []byte, coefficient byte, src []byte) error {
 		return XOR(dst, src)
 	default:
 		if forwardWriteOverlapsSource(dst, src) {
-			for index := len(src) - 1; index >= 0; index-- {
-				dst[index] ^= Mul(coefficient, src[index])
-			}
+			mulAddBackwardScalar(dst, coefficient, src)
 		} else {
-			for index, value := range src {
-				dst[index] ^= Mul(coefficient, value)
-			}
+			mulAddForward(dst, coefficient, src)
 		}
 		return nil
 	}

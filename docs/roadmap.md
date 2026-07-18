@@ -39,7 +39,7 @@
 ## Optional optimization work
 
 - [ ] Benchmark an immutable operation-plan cache keyed by K' before adding it.
-- [ ] Evaluate pure-Go architecture-specific GF(256) acceleration behind the
+- [x] Evaluate pure-Go architecture-specific GF(256) acceleration behind the
   exhaustively checked scalar semantics.
 - [ ] Tune sparse/dense crossover limits using representative production data.
 

@@ -141,6 +141,14 @@ percent loss runs at 11–19 MB/s (AMD Ryzen 5 3600, go1.26.5, single-threaded,
 scalar GF(256)). Measured tables, the exact reproduction command, and
 block-size guidance are in [`docs/performance.md`](docs/performance.md).
 
+On amd64, Go 1.26's experimental `simd/archsimd` API enables an opt-in AVX2
+path with a runtime scalar fallback. On an Intel Core i9-14900HX it reduced the
+paired K=10,000 construct-plus-repair median from 644.8 ms to 233.3 ms and the
+ten-percent-loss decode median from 669.7 ms to 227.1 ms. Run `task test:simd`
+and `task bench:simd`; the API remains experimental and is not enabled in
+default builds. Exact methodology is in
+[`dev/perf/simd-optimization-log.md`](dev/perf/simd-optimization-log.md).
+
 Practical limits: the API is in-memory — object-sized buffers on both ends,
 preflighted against `Limits` — not a streaming file API; one source block
 spans at most 56,403 symbols; transfers are capped at 942,574,504,275 bytes

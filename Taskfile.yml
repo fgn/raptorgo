@@ -152,6 +152,17 @@ tasks:
     cmds:
       - go test -count=1 -gcflags=all=-d=checkptr=2 ./...
 
+  test:simd:
+    desc: test the experimental amd64 SIMD path and its runtime scalar fallback
+    preconditions:
+      - sh: test "$(go env GOARCH)" = amd64
+        msg: the experimental simd/archsimd package currently requires amd64
+    env:
+      GOEXPERIMENT: simd
+    cmds:
+      - go test -count=1 ./...
+      - GODEBUG=cpu.avx2=off go test -count=1 ./internal/gf256
+
   fuzz:smoke:
     desc: exercise parser, object, decoder, algebra, and sparse fuzz targets
     cmds:
@@ -192,6 +203,28 @@ tasks:
 
   bench:smoke:
     desc: execute every benchmark corpus once as a validity gate
+    cmds:
+      - go test -run '^$' -bench '^BenchmarkObject' -benchtime=1x .
+
+  bench:simd:
+    desc: benchmark encoder/decoder strata with experimental AVX2 SIMD kernels
+    preconditions:
+      - sh: test "$(go env GOARCH)" = amd64
+        msg: the experimental simd/archsimd package currently requires amd64
+    env:
+      GOEXPERIMENT: simd
+      GOAMD64: v3
+    cmds:
+      - go test -run '^$' -bench '^BenchmarkObject' -benchmem .
+
+  bench:simd:smoke:
+    desc: execute every SIMD benchmark corpus once as a validity gate
+    preconditions:
+      - sh: test "$(go env GOARCH)" = amd64
+        msg: the experimental simd/archsimd package currently requires amd64
+    env:
+      GOEXPERIMENT: simd
+      GOAMD64: v3
     cmds:
       - go test -run '^$' -bench '^BenchmarkObject' -benchtime=1x .
 

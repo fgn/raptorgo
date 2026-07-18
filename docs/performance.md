@@ -1,8 +1,9 @@
 # Performance
 
 Measured numbers for user-relevant configurations, with the exact command to
-reproduce them. The implementation is single-threaded per operation and uses
-exhaustively checked scalar GF(256) arithmetic; no SIMD or assembly. Treat
+reproduce them. The default implementation is single-threaded per operation
+and uses exhaustively checked scalar GF(256) arithmetic; no SIMD or assembly.
+An opt-in experimental amd64 SIMD path is documented separately below. Treat
 these as honest baselines, not marketing claims.
 
 ## Environment
@@ -20,6 +21,43 @@ go test -run '^$' -bench '^BenchmarkObject' -benchmem .
 The suite also contains small-symbol conformance strata (T=7, 31, 64) that
 exercise parameter-table seams; the tables below show the transport strata
 with a network-realistic symbol size of T=1280 bytes and one source block.
+
+## Experimental amd64 SIMD path
+
+Go 1.26 exposes architecture-specific intrinsics through the experimental
+`simd/archsimd` package. Raptorgo uses 256-bit AVX2 operations only when built
+with `GOEXPERIMENT=simd` and when the runtime CPU check succeeds. Default,
+non-amd64, and AVX2-disabled builds use the exhaustively checked scalar path.
+The experimental package is outside the Go 1 compatibility promise, so the
+SIMD implementation and its build tags are deliberately isolated from the
+public API.
+
+```sh
+task test:simd
+task bench:simd
+# Equivalent benchmark environment:
+GOEXPERIMENT=simd GOAMD64=v3 go test -run '^$' -bench '^BenchmarkObject' -benchmem .
+```
+
+Paired results below were collected on an Intel Core i9-14900HX with Go
+1.26.5. Both binaries used `GOEXPERIMENT=simd`, `GOAMD64=v3`,
+`GOMAXPROCS=1`, and CPU 8. Ten one-iteration samples alternated the frozen
+pre-change scalar binary and the SIMD candidate so frequency and load drift
+were paired rather than compared across separate sessions.
+
+| K=10,000, T=1280 workload | Scalar median (range) | SIMD median (range) | Paired speedup |
+|---|---:|---:|---:|
+| Construct + first repair | 644.8 ms (643.0–646.6) | 233.3 ms (232.4–234.1) | 2.77x |
+| Decode, 10% loss + 4 overhead | 669.7 ms (667.3–676.1) | 227.1 ms (225.3–234.0) | 2.95x |
+
+The 1,280-byte kernel medians from ten alternating 500 ms samples were 361.0
+ns scalar versus 58.48 ns AVX2 for XOR (6.18x), and 1,002.5 ns scalar versus
+223.1 ns AVX2 for GF(256) `MulAdd` (4.49x). Both kernels remained zero
+allocation. End-to-end backing bytes and steady allocation counts were
+unchanged; the speedup comes from executing the same algebra on 32 bytes per
+vector. Full binary hashes, commands, profiles, rejected experiments, and gate
+results are in
+[`dev/perf/simd-optimization-log.md`](../dev/perf/simd-optimization-log.md).
 
 ## Encoding, T=1280
 
