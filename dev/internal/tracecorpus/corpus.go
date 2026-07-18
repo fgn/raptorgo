@@ -262,12 +262,23 @@ func curate(candidates []Candidate, options Options, fingerprint fingerprintFunc
 	return result, nil
 }
 
-// WriteDirectory replaces only NDJSON files in directory with the selected
-// corpus and writes one deterministic log line for every kept and dropped
-// candidate.
+// WriteDirectory stages the complete selected corpus before replacing only
+// regular NDJSON files in directory. It never follows a conflicting symlink
+// and writes one deterministic log line for every kept and dropped candidate.
 func WriteDirectory(directory string, result Result, log io.Writer) error {
 	if directory == "" {
 		return errors.New("tracecorpus: output directory is empty")
+	}
+	wanted := make(map[string]struct{}, len(result.Traces))
+	for _, trace := range result.Traces {
+		if !validFingerprint(trace.Fingerprint) {
+			return fmt.Errorf("tracecorpus: invalid fingerprint %q", trace.Fingerprint)
+		}
+		name := trace.Fingerprint + ".ndjson"
+		if _, duplicate := wanted[name]; duplicate {
+			return fmt.Errorf("tracecorpus: duplicate output %s", name)
+		}
+		wanted[name] = struct{}{}
 	}
 	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return fmt.Errorf("tracecorpus: create output directory: %w", err)
@@ -276,19 +287,55 @@ func WriteDirectory(directory string, result Result, log io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("tracecorpus: list output directory: %w", err)
 	}
+	existing := make([]string, 0)
 	for _, entry := range entries {
-		if entry.Type().IsRegular() && filepath.Ext(entry.Name()) == ".ndjson" {
-			if err := os.Remove(filepath.Join(directory, entry.Name())); err != nil {
-				return fmt.Errorf("tracecorpus: remove stale %s: %w", entry.Name(), err)
-			}
+		if filepath.Ext(entry.Name()) != ".ndjson" {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			return fmt.Errorf("tracecorpus: inspect existing %s: %w", entry.Name(), infoErr)
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("tracecorpus: existing %s is not a regular file", entry.Name())
+		}
+		existing = append(existing, entry.Name())
+	}
+
+	type stagedTrace struct {
+		name, path string
+	}
+	staged := make([]stagedTrace, 0, len(result.Traces))
+	defer func() {
+		for _, item := range staged {
+			_ = os.Remove(item.path)
+		}
+	}()
+	for _, trace := range result.Traces {
+		name := trace.Fingerprint + ".ndjson"
+		path, stageErr := stageFile(directory, trace.NDJSON)
+		if stageErr != nil {
+			return fmt.Errorf("tracecorpus: stage %s: %w", name, stageErr)
+		}
+		staged = append(staged, stagedTrace{name: name, path: path})
+	}
+	for index := range staged {
+		item := &staged[index]
+		if err := os.Rename(item.path, filepath.Join(directory, item.name)); err != nil {
+			return fmt.Errorf("tracecorpus: write %s: %w", item.name, err)
+		}
+		item.path = ""
+	}
+	for _, name := range existing {
+		if _, keep := wanted[name]; keep {
+			continue
+		}
+		if err := os.Remove(filepath.Join(directory, name)); err != nil {
+			return fmt.Errorf("tracecorpus: remove stale %s: %w", name, err)
 		}
 	}
 	for _, trace := range result.Traces {
 		name := trace.Fingerprint + ".ndjson"
-		path := filepath.Join(directory, name)
-		if err := os.WriteFile(path, trace.NDJSON, 0o644); err != nil {
-			return fmt.Errorf("tracecorpus: write %s: %w", name, err)
-		}
 		if log != nil {
 			fmt.Fprintf(log, "keep %s source=%s events=%d features=%s\n", name, trace.Source, len(trace.Events), joinFeatures(trace.Features))
 		}
@@ -299,6 +346,42 @@ func WriteDirectory(directory string, result Result, log io.Writer) error {
 		}
 	}
 	return nil
+}
+
+func validFingerprint(value string) bool {
+	if len(value) != 12 {
+		return false
+	}
+	for _, char := range value {
+		if (char < '0' || char > '9') && (char < 'a' || char > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func stageFile(directory string, contents []byte) (path string, err error) {
+	file, err := os.CreateTemp(directory, ".tracecorpus-*.tmp")
+	if err != nil {
+		return "", err
+	}
+	path = file.Name()
+	defer func() {
+		if err != nil {
+			_ = file.Close()
+			_ = os.Remove(path)
+		}
+	}()
+	if err = file.Chmod(0o644); err != nil {
+		return "", err
+	}
+	if _, err = file.Write(contents); err != nil {
+		return "", err
+	}
+	if err = file.Close(); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func normalizeFeatures(features []Feature) ([]Feature, error) {

@@ -175,3 +175,41 @@ func TestWriteDirectoryRemovesStaleNDJSONAndLogsDeterministically(t *testing.T) 
 		t.Fatalf("log = %q", log.String())
 	}
 }
+
+func TestWriteDirectoryRejectsSymlinkWithoutTouchingTarget(t *testing.T) {
+	result, err := Curate([]Candidate{{Source: "wait", Events: testTrace("add_wait")}}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := t.TempDir()
+	target := t.TempDir() + "/target"
+	if err := os.WriteFile(target, []byte("untouched"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := directory + "/" + result.Traces[0].Fingerprint + ".ndjson"
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := WriteDirectory(directory, result, nil); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("symlink error = %v", err)
+	}
+	contents, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contents) != "untouched" {
+		t.Fatalf("symlink target changed to %q", contents)
+	}
+}
+
+func TestWriteDirectoryRejectsUnsafeAndDuplicateNames(t *testing.T) {
+	directory := t.TempDir()
+	for _, result := range []Result{
+		{Traces: []Trace{{Fingerprint: "../outside"}}},
+		{Traces: []Trace{{Fingerprint: "0123456789ab"}, {Fingerprint: "0123456789ab"}}},
+	} {
+		if err := WriteDirectory(directory, result, nil); err == nil {
+			t.Fatalf("unsafe result %#v unexpectedly passed", result)
+		}
+	}
+}
