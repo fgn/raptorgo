@@ -6,6 +6,15 @@ tool=${GO_MUTESTING:-./bin/go-mutesting}
 workers=${MUTATION_WORKERS:-6}
 baseline=dev/mutation/baseline.json
 
+# go-mutesting always writes its full default report at the repository root,
+# including when no JSON logger is requested. It is intentionally not a
+# committed artifact; remove it on success, failure, or interruption so local
+# and CI mutation runs cannot leave a multi-megabyte file to be swept up.
+cleanup_default_report() {
+	rm -f report.json
+}
+trap cleanup_default_report EXIT HUP INT TERM
+
 runtime_targets() {
 	find . -maxdepth 1 -type f -name '*.go' ! -name '*_test.go'
 	find internal/codec internal/gf256 internal/matrix internal/rfc6330 \
@@ -14,7 +23,7 @@ runtime_targets() {
 
 case "${1:-}" in
 gate)
-	exec "$tool" \
+	"$tool" \
 		--noop \
 		--workers="$workers" \
 		--timeout-coefficient=5 \
@@ -33,7 +42,7 @@ audit)
 	# curated gate intentionally omits both so constants and error-only paths
 	# remain mutation candidates.
 	# shellcheck disable=SC2046
-	exec "$tool" \
+	"$tool" \
 		--noop \
 		--coverage \
 		--per-test \
@@ -65,11 +74,11 @@ changed)
 		--logger-summary-json \
 		--git-diff-base="${MUTATION_DIFF_BASE:-HEAD}"
 	# shellcheck disable=SC2046
-	exec "$tool" "$@" $(runtime_targets | sort)
+	"$tool" "$@" $(runtime_targets | sort)
 	;;
 list)
 	# shellcheck disable=SC2046
-	exec "$tool" --dry-run $(runtime_targets | sort)
+	"$tool" --dry-run $(runtime_targets | sort)
 	;;
 *)
 	echo 'usage: mutation.sh gate|audit|changed|list' >&2
