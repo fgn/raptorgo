@@ -522,9 +522,9 @@ func checkError(result string, err error, exactDecode bool) error {
 		return fmt.Errorf("error=nil, want %s", result)
 	}
 	for _, sentinel := range oracleErrorSentinels {
-		got, want := errors.Is(err, sentinel), wants[sentinel]
+		got, want := errors.Is(err, sentinel.err), wants[sentinel.err]
 		if got != want {
-			return fmt.Errorf("error=%v sentinel %v=%t, want %t", err, sentinel, got, want)
+			return fmt.Errorf("error=%v sentinel %v=%t, want %t", err, sentinel.err, got, want)
 		}
 	}
 	return nil
@@ -532,25 +532,30 @@ func checkError(result string, err error, exactDecode bool) error {
 
 // oracleErrorSentinels is the closed error alphabet asserted both positively
 // and negatively by Oracle 1. New expected result classes must extend this
-// list and the mapping above together.
-var oracleErrorSentinels = []error{
-	raptorgo.ErrObjectVerification,
-	raptorgo.ErrObjectDelivery,
-	raptorgo.ErrObjectDecoder,
-	raptorgo.ErrObjectTerminal,
-	raptorgo.ErrInvalidPacket,
-	raptorgo.ErrInvalidPayloadID,
-	raptorgo.ErrLimitExceeded,
-	codec.ErrDecoderLimits,
-	codec.ErrDecoderBacking,
-	codec.ErrDecoderSymbol,
-	codec.ErrDecoderAttemptLimit,
-	codec.ErrDecoderDuplicateConflict,
-	codec.ErrDecoderRetainedLimit,
-	codec.ErrDecoderComplexity,
-	codec.ErrDecoderConflict,
-	codec.ErrDecoderComplete,
-	codec.ErrDecoderNotComplete,
+// list and the mapping above together. The stable names are also the exact
+// error identity used by the failure minimizer.
+var oracleErrorSentinels = []struct {
+	name string
+	err  error
+}{
+	{"object-verification", raptorgo.ErrObjectVerification},
+	{"object-delivery", raptorgo.ErrObjectDelivery},
+	{"object-decoder", raptorgo.ErrObjectDecoder},
+	{"object-terminal", raptorgo.ErrObjectTerminal},
+	{"invalid-packet", raptorgo.ErrInvalidPacket},
+	{"invalid-payload-id", raptorgo.ErrInvalidPayloadID},
+	{"invalid-oti", raptorgo.ErrInvalidOTI},
+	{"limit", raptorgo.ErrLimitExceeded},
+	{"decoder-limits", codec.ErrDecoderLimits},
+	{"decoder-backing", codec.ErrDecoderBacking},
+	{"decoder-symbol", codec.ErrDecoderSymbol},
+	{"decoder-attempt-limit", codec.ErrDecoderAttemptLimit},
+	{"decoder-duplicate-conflict", codec.ErrDecoderDuplicateConflict},
+	{"decoder-retained-limit", codec.ErrDecoderRetainedLimit},
+	{"decoder-complexity", codec.ErrDecoderComplexity},
+	{"decoder-conflict", codec.ErrDecoderConflict},
+	{"decoder-complete", codec.ErrDecoderComplete},
+	{"decoder-not-complete", codec.ErrDecoderNotComplete},
 }
 
 func checkEventTail(events []objtrace.Event, operations []string) error {

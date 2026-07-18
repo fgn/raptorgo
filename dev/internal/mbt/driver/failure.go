@@ -6,9 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fgn/raptorgo"
 	"github.com/fgn/raptorgo/dev/internal/objtrace"
-	"github.com/fgn/raptorgo/internal/codec"
 )
 
 // FailureKind identifies one stable oracle boundary. It intentionally omits
@@ -98,26 +96,10 @@ func errorClass(err error) string {
 	if err == nil {
 		return "nil"
 	}
-	classes := []struct {
-		name     string
-		sentinel error
-	}{
-		{"object-verification", raptorgo.ErrObjectVerification},
-		{"object-delivery", raptorgo.ErrObjectDelivery},
-		{"object-terminal", raptorgo.ErrObjectTerminal},
-		{"invalid-packet", raptorgo.ErrInvalidPacket},
-		{"invalid-payload-id", raptorgo.ErrInvalidPayloadID},
-		{"invalid-oti", raptorgo.ErrInvalidOTI},
-		{"limit", raptorgo.ErrLimitExceeded},
-		{"object-decoder", raptorgo.ErrObjectDecoder},
-		{"decoder-attempt-limit", codec.ErrDecoderAttemptLimit},
-		{"decoder-duplicate-conflict", codec.ErrDecoderDuplicateConflict},
-		{"decoder-symbol", codec.ErrDecoderSymbol},
-	}
-	matched := make([]string, 0, len(classes))
-	for _, class := range classes {
-		if errors.Is(err, class.sentinel) {
-			matched = append(matched, class.name)
+	matched := make([]string, 0, len(oracleErrorSentinels))
+	for _, sentinel := range oracleErrorSentinels {
+		if errors.Is(err, sentinel.err) {
+			matched = append(matched, sentinel.name)
 		}
 	}
 	if len(matched) == 0 {

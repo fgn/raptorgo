@@ -26,6 +26,10 @@ func TestCheckErrorRejectsUnexpectedSentinelClasses(t *testing.T) {
 			errors.Join(raptorgo.ErrInvalidPacket, raptorgo.ErrInvalidPayloadID), false,
 		},
 		{
+			"invalid-plus-invalid-oti", "invalid",
+			errors.Join(raptorgo.ErrInvalidPacket, raptorgo.ErrInvalidOTI), false,
+		},
+		{
 			"conflict-plus-attempt-limit", "conflict",
 			errors.Join(
 				raptorgo.ErrObjectDecoder,
@@ -49,6 +53,25 @@ func TestCheckErrorRejectsUnexpectedSentinelClasses(t *testing.T) {
 				t.Fatalf("checkError = %v, want unexpected-sentinel rejection", err)
 			}
 		})
+	}
+}
+
+func TestErrorClassDistinguishesClosedSentinelAlphabet(t *testing.T) {
+	seen := make(map[string]bool, len(oracleErrorSentinels))
+	for _, sentinel := range oracleErrorSentinels {
+		if seen[sentinel.name] {
+			t.Fatalf("duplicate stable sentinel name %q", sentinel.name)
+		}
+		seen[sentinel.name] = true
+		if got := errorClass(sentinel.err); got != sentinel.name {
+			t.Errorf("errorClass(%v) = %q, want %q", sentinel.err, got, sentinel.name)
+		}
+	}
+
+	complexity := errorClass(errors.Join(raptorgo.ErrObjectDecoder, codec.ErrDecoderComplexity))
+	conflict := errorClass(errors.Join(raptorgo.ErrObjectDecoder, codec.ErrDecoderConflict))
+	if complexity == conflict {
+		t.Fatalf("distinct failures collapsed to %q", complexity)
 	}
 }
 
