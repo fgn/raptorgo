@@ -98,7 +98,9 @@ for esi := k; decoder.State() == raptorgo.ObjectReceiving; esi++ {
 // decoder.State() == raptorgo.ObjectDelivered
 ```
 
-Runnable versions live in the
+Allocation-sensitive senders can use `PacketInto` to write packets into a
+reusable caller buffer instead of receiving an owned allocation per call.
+Runnable versions of both patterns live in the
 [package examples](https://pkg.go.dev/github.com/fgn/raptorgo#pkg-examples)
 and in [`examples/roundtrip`](examples/roundtrip/main.go), a standalone
 program that simulates a lossy channel end to end:
@@ -259,10 +261,12 @@ technology. Any defects in this implementation are this project's own.
 The project is a research effort in applying formal-methods and
 differential-verification techniques to a protocol implementation. It
 should not be read as "formally verified." The TLA+ artifacts
-model-check bounded abstractions of selected subsystems and replay
-production-generated traces against those models; they check finite
-safety properties of models and recorded traces, not the compiled Go
-code, and establish no liveness of the real implementation. The exact
+model-check bounded abstractions of selected subsystems, replay
+production-generated traces against those models, and drive model-derived
+schedules back through the public decoder; they check finite safety
+properties of models, recorded traces, and bounded witness schedules, not
+the compiled Go code, and establish no liveness of the real
+implementation. The exact
 claim-to-evidence map is in [`docs/invariants.md`](docs/invariants.md),
 the formal scope and its limits in the
 [`dev/formal` repository documentation](https://github.com/fgn/raptorgo/blob/main/dev/formal/README.md),
