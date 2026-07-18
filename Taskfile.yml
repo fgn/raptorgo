@@ -271,7 +271,8 @@ tasks:
         go -C dev run ./internal/cmd/genobjecttrace \
           -scenario decode-fail -output "$temporary/object-decoder-decode-failure-trace-data.tla"
         go -C dev run ./internal/cmd/traceharvest \
-          -output "$temporary/objectdecoder" -max 64 >"$temporary/traceharvest.log"
+          -fuzz-corpus -output "$temporary/objectdecoder" -max 64 \
+          >"$temporary/traceharvest.log"
         go -C dev run ./internal/cmd/genwitness \
           -corpus "$temporary/objectdecoder" \
           -manifest formal/coverage/actions.json \

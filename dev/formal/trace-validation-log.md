@@ -23,7 +23,7 @@ they are not edges in the two packet-driven DOT graphs.
 
 | Evidence | Recorded result | What it establishes |
 | --- | --- | --- |
-| Harvest | 27 deterministic candidates, 24 retained, 3 abstract duplicates dropped | The checked-in corpus preserves all required fixture families and novelty obligations. |
+| Harvest | 30 deterministic built-in-plus-checked-fuzz candidates, 24 retained, 6 abstract duplicates dropped | The checked-in corpus preserves all required fixture families and novelty obligations. |
 | Action coverage | 24 traces, 140 classified events, 16/16 manifest actions | Every member of the closed lifecycle action alphabet occurs in the harvested corpus. The files contain 161 raw records: 21 `init` records are intentionally excluded from classification, while three `construct_final` records are classified. |
 | Legal witnesses | 16 traces, 68 classified events, 16/16 manifest actions | Each manifest action also has an independently named legal witness. This is a drift guard for the action alphabet, not additional model-edge coverage. |
 | Combined coverage report | 40 traces, 208 classified events, 16/16 manifest actions | `coverage/report.json` is the pinned aggregate of the harvested corpus and independently named legal witnesses. |

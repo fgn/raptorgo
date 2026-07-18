@@ -72,7 +72,8 @@ for the recorded execution.
 
 The data-driven trace pipeline broadens those fixed scenarios without changing
 the claim boundary. Deterministic harvesting currently retains 24 production
-traces from 27 candidates. They contain 161 raw records: 21 `init` records are
+traces from 30 built-in-plus-checked-fuzz candidates. They contain 161 raw
+records: 21 `init` records are
 excluded from action classification, leaving 140 classified events that cover
 all 16 actions in `coverage/actions.json`. The three `construct_final` records
 are classified. All 24 traces pass `ObjectDecoderTraceSpec`, and all 205
