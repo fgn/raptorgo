@@ -139,8 +139,10 @@ Field rules:
 - `completed`, `verification`, `delivery` (ints ≥ 0): observed
   `CompletedBlocks()` and recorder-side callback counters, exactly as
   `genobjecttrace` records them today.
-- `bindingOK` (bool): callback-side binding check (OTI/context/length/bytes
-  equality); `true` for non-callback events.
+- `bindingOK` (bool): required to be true on every valid trace record. Callback
+  records derive it from OTI/context/length/bytes equality; requiring it on
+  non-callback records closes the serialized trace contract against a forged
+  false value.
 - `sbn`, `esi`, `symbols` (ints, optional, default -1/-1/0): packet
   attribution for debugging and WS4 oracles. The TLA converter **drops**
   them (the spec is content-agnostic); they never affect fingerprints.
@@ -353,7 +355,7 @@ below violate trace-step matching, which manifests as TraceComplete):
 | operator | transformation | applicable when |
 |---|---|---|
 | `drop-step` | delete event i (for each non-init i, capped at 8 mutants/trace by stable stride) | always |
-| `forge-binding` | set `bindingOK` FALSE on a `verify_enter`/`verified`/`deliver_enter` | callback events exist |
+| `forge-binding` | set `bindingOK` FALSE at one non-initial record position | trace has a replay step |
 | `early-deliver` | move first `deliver_enter` immediately before `verified` | delivered traces |
 | `skip-verify` | delete `verified` event but keep `deliver_enter` | delivered traces |
 | `resurrect` | change a `terminal_add` into `add_wait` with state receiving | terminal-reject traces |

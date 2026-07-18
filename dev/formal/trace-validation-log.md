@@ -28,7 +28,7 @@ they are not edges in the two packet-driven DOT graphs.
 | Legal witnesses | 16 traces, 68 classified events, 16/16 manifest actions | Each manifest action also has an independently named legal witness. This is a drift guard for the action alphabet, not additional model-edge coverage. |
 | Combined coverage report | 40 traces, 208 classified events, 16/16 manifest actions | `coverage/report.json` is the pinned aggregate of the harvested corpus and independently named legal witnesses. |
 | Positive replay | `tracereplay: passed 24/24 traces` | Every harvested production trace was accepted by the data-driven TLA+ trace spec. |
-| Negative replay | `tracereplay: passed 205/205 mutants` | Every applicable mutant from all seven operators failed with the exact `TraceComplete` rejection marker. This is negative-control evidence, not a general mutation score. |
+| Negative replay | `tracereplay: passed 284/284 mutants` | Every applicable mutant from all seven operators failed with the exact `TraceComplete` rejection marker. This is negative-control evidence, not a general mutation score. |
 | Model A | 105 generated states, 21 distinct states, depth 8; 104 dumped edges | The `Blocks=2`, `K=2`, no-decode-fault bounded model satisfies its configured invariants and action properties. |
 | Model B | 16 generated states, 8 distinct states, depth 5; 15 dumped edges | The `Blocks=1`, `K=1`, decode-fault-enabled bounded model satisfies the same configured checks. |
 | Model negative control | exit 13; `Error: Action property EveryNextTransitionAllowed is violated.` | `AdversarialSkipVerify` reaches `delivered` directly from `decoded` and is rejected by the independently specified allowed-action property. |
@@ -41,7 +41,11 @@ they are not edges in the two packet-driven DOT graphs.
 The seven deterministic negative operators are `drop-step`, `forge-binding`,
 `early-deliver`, `skip-verify`, `resurrect`, `forge-completion`, and
 `double-delivery`. The gate also fails if any operator has no applicable corpus
-member, preventing a vacuous 205-case total.
+member, preventing a vacuous negative total. `forge-binding` changes every
+replayed record position, not only callback records, so the replay contract
+requires `bindingOK` on the complete trace alphabet. It excludes the initial
+record because an invalid `Init` produces an empty TLC model, not the exact
+`TraceComplete` counterexample required of these operators.
 
 ## Model boundaries and realizability
 
@@ -103,7 +107,7 @@ TLC 1.8.0 jar.
 | Harvested-corpus hash-of-hashes | `f47a689efcd69bb22edf93d7c40f655ff8bfaccc17816466abab27789876bd6d` |
 | Legal-witness hash-of-hashes | `ef8589d881303b4076f1d3844a29a9ab7d136e2b0ec4f1f5371712d725ad8407` |
 | Schedule-tree hash-of-hashes | `15553bccfb6dac70a0c6377f12c61c383d4047120e10bb81573c0b68e93727c6` |
-| Derived 205-mutant hash-of-hashes | `b36f315497f58ed7c926df5fc0a31e80b0c54fd6e2b1e81b0768d127de363053` |
+| Derived 284-mutant hash-of-hashes | `3eaaf79ca3fb530dc83bc9b66c288698ba69d6ec3b7224cd18ed0ae58c5c0e7b` |
 
 The three tree hashes above include the sorted relative file names in the
 `sha256sum` input. The mutant hash uses
@@ -253,7 +257,7 @@ worktree.
   source-packet round-trip fuzz seeds. It does not represent arbitrary network
   input, malformed packet ingestion by that fuzz target, or concurrency
   schedules.
-- The 205 mutants are sound, structurally applicable trace transformations.
+- The 284 mutants are sound, structurally applicable trace transformations.
   Their rejection does not imply that every malformed trace or production bug
   will be detected.
 - Oracle 2 checks projected trace fields. Data omitted by that projection must

@@ -88,7 +88,7 @@ Init ==
        \/ ConstructDeliveryFailedInit
     /\ Matches(Trace[1])
 
-Apply(record) ==
+ApplyTransition(record) ==
     \/ /\ record.op = "add_wait"
        /\ record.result = "ok"
        /\ state = "receiving"
@@ -166,6 +166,10 @@ Apply(record) ==
        /\ record.result = "terminal"
        /\ RejectingStateReady
        /\ UNCHANGED <<state, completed, verification, delivery>>
+
+Apply(record) ==
+    /\ record.bindingOK
+    /\ ApplyTransition(record)
 
 Next ==
     /\ traceIndex < Len(Trace)

@@ -49,7 +49,7 @@ public object decoder and its unlocked callbacks.
 | DEC-9 | Failed pre-ready, wrong-phase, and post-terminal calls preserve the projected state. | Go-generated rejected-call trace replay through TLC. |
 | DEC-10 | The public object decoder exposes `decoded` before verification, `verified` before delivery, and a terminal `decode-failed` state after an unrecoverable bounded attempt. | Production-generated success/failure traces, exact callback counters, terminal re-add checks, and forged-state negative controls. |
 | DEC-11 | Every edge in each exact committed bounded `ObjectDecoderModel` graph has a selected, realizable production witness. | A: 21 states, 104 edges, 29 schedules; B: 8 states, 15 edges, 6 schedules; structured edge-triple equality, graph digests, Oracle 1, and Oracle 2. Three additional schedules cover the zero-length constructor outcomes. |
-| DEC-12 | The trace checker rejects all applicable members of the closed negative-operator set for the committed corpus. | 205/205 deterministic mutants rejected with the exact `TraceComplete` marker; all seven operators must apply somewhere or the gate fails. |
+| DEC-12 | The trace checker rejects all applicable members of the closed negative-operator set for the committed corpus. | 284/284 deterministic mutants rejected with the exact `TraceComplete` marker; all seven operators must apply somewhere or the gate fails. |
 
 The lifecycle model uses `Cardinality(accepted) >= Required` only as an abstract
 readiness predicate. The concrete codec uses matrix rank/solvability and is

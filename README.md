@@ -182,7 +182,7 @@ The implementation is checked in independent layers:
 
 The current public-object-decoder evidence set contains 24 harvested traces,
 140 classified lifecycle events, and all 16 actions in the closed manifest.
-All 24 traces pass TLC replay and all 205 applicable deterministic trace
+All 24 traces pass TLC replay and all 284 applicable deterministic trace
 mutants are rejected by the exact `TraceComplete` property. Two bounded model graphs
 contain 104 and 15 edges; 35 generated schedules retain every one of those
 edges, and three separate constructor schedules bring the production witness

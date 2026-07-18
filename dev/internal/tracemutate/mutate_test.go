@@ -1,6 +1,7 @@
 package tracemutate
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/fgn/raptorgo/dev/internal/objtrace"
@@ -71,6 +72,30 @@ func TestMutationShapes(t *testing.T) {
 	}
 	if got := byID["double-delivery-0005"].Events; got[5].Op != "deliver_enter" || got[6].Op != "deliver_enter" {
 		t.Fatalf("double delivery operations = %q, %q", got[5].Op, got[6].Op)
+	}
+}
+
+func TestForgeBindingCoversEveryRecord(t *testing.T) {
+	events := deliveredTrace()
+	mutants, err := Generate(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := make(map[string]bool, len(events)-1)
+	for _, mutant := range mutants {
+		if mutant.Operator != ForgeBinding {
+			continue
+		}
+		seen[mutant.ID] = true
+	}
+	if seen["forge-binding-0000"] {
+		t.Error("initial record must not be forged by an exact TraceComplete mutant")
+	}
+	for index := 1; index < len(events); index++ {
+		id := fmt.Sprintf("forge-binding-%04d", index)
+		if !seen[id] {
+			t.Errorf("missing %s", id)
+		}
 	}
 }
 

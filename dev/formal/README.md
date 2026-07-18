@@ -76,7 +76,7 @@ traces from 30 built-in-plus-checked-fuzz candidates. They contain 161 raw
 records: 21 `init` records are
 excluded from action classification, leaving 140 classified events that cover
 all 16 actions in `coverage/actions.json`. The three `construct_final` records
-are classified. All 24 traces pass `ObjectDecoderTraceSpec`, and all 205
+are classified. All 24 traces pass `ObjectDecoderTraceSpec`, and all 284
 applicable mutants from the seven closed operators are rejected with the exact
 `TraceComplete` marker. The gate fails if an operator has no applicable trace.
 
@@ -114,7 +114,7 @@ is owned by the pinned specification, algebra/rank tests, and Rust/C++
 differential evidence.
 
 Exact reproduction commands, deterministic TLC flags, graph and corpus hashes,
-the 24/140/16 and 205-case breakdowns, and the seeded-bug exercise status are in
+the 24/140/16 and 284-case breakdowns, and the seeded-bug exercise status are in
 [`trace-validation-log.md`](trace-validation-log.md).
 
 `SparseScheduleTrace.tla` replays observations from the production sparse

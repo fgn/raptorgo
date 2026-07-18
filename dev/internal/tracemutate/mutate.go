@@ -97,16 +97,16 @@ func dropStepMutants(events []objtrace.Event) []Mutant {
 }
 
 func forgeBindingMutants(events []objtrace.Event) []Mutant {
-	result := make([]Mutant, 0)
-	for index, event := range events {
-		switch event.Op {
-		case "verify_enter", "verified", "deliver_enter":
-			mutated := clone(events)
-			mutated[index].BindingOK = false
-			result = append(result, Mutant{
-				ID: fmt.Sprintf("%s-%04d", ForgeBinding, index), Operator: ForgeBinding, Events: mutated,
-			})
-		}
+	result := make([]Mutant, 0, max(0, len(events)-1))
+	// The first record belongs to Init. Forging it yields no initial states,
+	// which TLC correctly regards as an empty model rather than a TraceComplete
+	// counterexample. Mutate every replayed record so rejection remains exact.
+	for index := 1; index < len(events); index++ {
+		mutated := clone(events)
+		mutated[index].BindingOK = false
+		result = append(result, Mutant{
+			ID: fmt.Sprintf("%s-%04d", ForgeBinding, index), Operator: ForgeBinding, Events: mutated,
+		})
 	}
 	return result
 }
