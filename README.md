@@ -131,20 +131,18 @@ threat model.
 
 ## Performance and practical limits
 
-Steady-state repair generation runs at roughly 160–180 MB/s of symbol
-payload per core at T=1280 independent of block size, the one-time repair
-plan per block builds at 13–21 MB/s of object bytes, and end-to-end decoding
-with ten percent loss runs at 12–20 MB/s (AMD Ryzen 5 3600, go1.26.5,
-single-threaded, scalar GF(256)). Measured tables, the exact reproduction
-command, and block-size guidance are in
-[`docs/performance.md`](docs/performance.md).
+Systematic packets are emitted in well under a microsecond regardless of
+block size (about 80 ns with a reused `PacketInto` buffer), cached repair
+symbols cost a few microseconds each at T=1280, the one-time repair plan per
+block builds at 13–21 MB/s of object bytes, and end-to-end decoding with ten
+percent loss runs at 11–19 MB/s (AMD Ryzen 5 3600, go1.26.5, single-threaded,
+scalar GF(256)). Measured tables, the exact reproduction command, and
+block-size guidance are in [`docs/performance.md`](docs/performance.md).
 
 Practical limits: the API is in-memory — object-sized buffers on both ends,
 preflighted against `Limits` — not a streaming file API; one source block
 spans at most 56,403 symbols; transfers are capped at 942,574,504,275 bytes
-(RFC erratum 5548 applied). Systematic packets are emitted directly from the
-immutable object in O(packet bytes); `PacketInto` accepts a reusable caller
-buffer for a zero-allocation source-packet path.
+(RFC erratum 5548 applied).
 
 ## Implemented behavior
 
@@ -180,16 +178,16 @@ The implementation is checked in independent layers:
 9. a pinned mutation-testing gate over critical resource, wire, GF(256), and
    partition kernels, plus broader changed-line and scheduled audits.
 
-The current public-object-decoder evidence set contains 24 harvested traces,
-140 classified lifecycle events, and all 16 actions in the closed manifest.
-All 24 traces pass TLC replay and all 284 applicable deterministic trace
-mutants are rejected by the exact `TraceComplete` property. Two bounded model graphs
-contain 104 and 15 edges; 35 generated schedules retain every one of those
-edges, and three separate constructor schedules bring the production witness
-set to 38. All 38 pass the Java-free local oracle and trace replay. The precise
-claim is that every edge in those two exact bounded dumps has a selected,
-realizable witness—not that every model behavior or production execution has
-been explored.
+The public object decoder additionally carries a data-driven trace pipeline:
+every committed harvested execution replays through the TLA+ trace
+specification with machine-generated mutants that must be rejected exactly,
+the closed action manifest must be fully covered, and model-derived schedules
+drive the production decoder so that every edge of two exact bounded
+`ObjectDecoderModel` graph dumps has a realizable witness. The precise claim
+is edge coverage of those finite dumps — not exploration of every model
+behavior or production execution. Current counts and reproduction commands
+are pinned in [`docs/invariants.md`](docs/invariants.md) and the
+[`dev/formal` documentation](https://github.com/fgn/raptorgo/blob/main/dev/formal/README.md).
 
 RFC Editor erratum 5548 is applied: the maximum transfer length is
 `942574504275`.

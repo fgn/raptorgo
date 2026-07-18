@@ -125,9 +125,10 @@ candidate must satisfy both the original absolute threshold of 155,177 ns/op
 and a paired median improvement of at least 13x. Against the hardened
 single/N=1 median, the latter threshold is 149,166 ns/op.
 
-The Z=255 loop-termination correction between the original and hardened
-baselines does not execute in any Z=1 benchmark above and therefore does not
-affect the performance comparison.
+The Z=255 defensive loop-index rewrite between the original and hardened
+baselines (the original `uint8` counters already terminated for every legal
+Z) does not execute in any Z=1 benchmark above and therefore does not affect
+the performance comparison.
 
 ## Implemented sequence
 
@@ -224,7 +225,7 @@ memory limits, returned ownership, zero allocations, concurrent mixed
 source/repair calls, maximum repair ESI, repair-cache replacement failure,
 and Z=255 full-object round trip.
 
-Three adversarial reviewers independently inspected Go/runtime behavior,
+Three independent adversarial review passes inspected Go/runtime behavior,
 formal/resource obligations, and RFC/interop mapping. They found one release
 blocker: a short cold repair `PacketInto` request originally validated its
 buffer after building/replacing the repair cache. Commit `18893b7` moves that

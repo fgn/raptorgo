@@ -9,7 +9,7 @@ these as honest baselines, not marketing claims.
 
 - CPU: AMD Ryzen 5 3600 (6 cores, 12 threads), linux/amd64
 - Go: go1.26.5
-- Date: 2026-07-17
+- Date: 2026-07-18
 - Command:
 
 ```sh
@@ -25,23 +25,24 @@ with a network-realistic symbol size of T=1280 bytes and one source block.
 
 | K      | Object    | Construct + first repair | Cached repair packet | Systematic packet |
 |-------:|----------:|-------------------------:|---------------------:|------------------:|
-| 10     | 12.8 KB   | 0.92 ms (13.9 MB/s)      | 7.8 µs (164 MB/s)    | O(T)               |
-| 100    | 128 KB    | 5.9 ms (21.7 MB/s)       | 12.9 µs (100 MB/s)   | O(T)               |
-| 1,000  | 1.28 MB   | 65 ms (19.6 MB/s)        | 7.7 µs (167 MB/s)    | O(T)               |
-| 10,000 | 12.8 MB   | 0.96 s (13.4 MB/s)       | 7.1 µs (180 MB/s)    | 0.320 µs            |
+| 10     | 12.8 KB   | 1.0 ms (12.4 MB/s)       | 5.8 µs (220 MB/s)    | 0.35 µs            |
+| 100    | 128 KB    | 6.2 ms (20.6 MB/s)       | 9.3 µs (137 MB/s)    | 0.36 µs            |
+| 1,000  | 1.28 MB   | 73 ms (17.6 MB/s)        | 6.6 µs (194 MB/s)    | 0.36 µs            |
+| 10,000 | 12.8 MB   | 0.93 s (13.7 MB/s)       | 4.8 µs (269 MB/s)    | 0.39 µs            |
 
 - **Construct + first repair** is the one-time cost per source block: building
   the encoder and solving the repair plan (throughput in object bytes).
 - **Cached repair packet** is the steady-state cost per repair symbol once the
-  block's plan is cached: roughly 160–180 MB/s of symbol payload at 2
-  allocations per packet, independent of K.
+  block's plan is cached: a few microseconds per 1,280-byte symbol at 2
+  allocations per packet, independent of K. The per-K spread in this column is
+  run-to-run scheduler noise, not a K effect.
 - **Systematic packet** scatters only the requested bytes directly from the
   immutable object, including RFC sub-block transposition and shortened final
-  symbols. Its cost is independent of K: the pinned K=10,000 paired median was
-  320.3 ns and 1,408 B/op with the one caller-owned result allocation.
-  `PacketInto` with a reusable buffer measured 73.0 ns, 0 B/op, and 0
-  allocations/op. See the complete alternating-binary methodology and raw
-  ranges in [`dev/perf/optimization-log.md`](../dev/perf/optimization-log.md).
+  symbols. Its cost is independent of K, with one caller-owned result
+  allocation per call. `PacketInto` with a reusable buffer measured 80 ns,
+  0 B/op, and 0 allocations/op in the same run. CPU-pinned paired medians
+  (320.3 ns and 73.0 ns) and the alternating-binary methodology are in
+  [`dev/perf/optimization-log.md`](../dev/perf/optimization-log.md).
 
 ## Decoding with ten percent source loss, T=1280
 
@@ -51,10 +52,10 @@ an owned copy (throughput in object bytes).
 
 | K      | Object    | Lost symbols | Overhead symbols | End-to-end decode |
 |-------:|----------:|-------------:|-----------------:|------------------:|
-| 10     | 12.8 KB   | 1            | 0                | 1.0 ms (12.7 MB/s) |
-| 100    | 128 KB    | 10           | 1                | 7.0 ms (18.2 MB/s) |
-| 1,000  | 1.28 MB   | 100          | 2                | 65 ms (19.8 MB/s)  |
-| 10,000 | 12.8 MB   | 1,000        | 4                | 1.06 s (12.1 MB/s) |
+| 10     | 12.8 KB   | 1            | 0                | 1.2 ms (10.9 MB/s) |
+| 100    | 128 KB    | 10           | 1                | 7.2 ms (17.7 MB/s) |
+| 1,000  | 1.28 MB   | 100          | 2                | 67 ms (19.2 MB/s)  |
+| 10,000 | 12.8 MB   | 1,000        | 4                | 0.97 s (13.2 MB/s) |
 
 The decoder completed every corpus above with at most a handful of symbols
 beyond K, consistent with the bounded recovery statistics in

@@ -28,7 +28,7 @@ they are not edges in the two packet-driven DOT graphs.
 | Legal witnesses | 16 traces, 68 classified events, 16/16 manifest actions | Each manifest action also has an independently named legal witness. This is a drift guard for the action alphabet, not additional model-edge coverage. |
 | Combined coverage report | 40 traces, 208 classified events, 16/16 manifest actions | `coverage/report.json` is the pinned aggregate of the harvested corpus and independently named legal witnesses. |
 | Positive replay | `tracereplay: passed 24/24 traces` | Every harvested production trace was accepted by the data-driven TLA+ trace spec. |
-| Negative replay | `tracereplay: passed 284/284 mutants` | Every applicable mutant from all seven operators failed with the exact `TraceComplete` rejection marker. This is negative-control evidence, not a general mutation score. |
+| Negative replay | `tracereplay: passed 284/284 mutants` | Every applicable mutant from all seven operators failed with the exact `TraceComplete` rejection marker. This is negative-control evidence, not a general mutation score. 284 counts operator cases, not distinct traces: where both apply, a `skip-verify` mutant is byte-identical to the `drop-step` mutant of the first `verified` record. |
 | Model A | 105 generated states, 21 distinct states, depth 8; 104 dumped edges | The `Blocks=2`, `K=2`, no-decode-fault bounded model satisfies its configured invariants and action properties. |
 | Model B | 16 generated states, 8 distinct states, depth 5; 15 dumped edges | The `Blocks=1`, `K=1`, decode-fault-enabled bounded model satisfies the same configured checks. |
 | Model negative control | exit 13; `Error: Action property EveryNextTransitionAllowed is violated.` | `AdversarialSkipVerify` reaches `delivered` directly from `decoded` and is rejected by the independently specified allowed-action property. |
@@ -250,9 +250,11 @@ worktree.
 
 ## Adversarial closure
 
-Three independent read-only reviews covered the formal/TLC boundary, Go
-resource and artifact safety, and RFC/interoperability/release isolation. The
-final remediation pass closed every blocker, high, and medium finding:
+Three independent read-only review passes covered the formal/TLC boundary, Go
+resource and artifact safety, and RFC/interoperability/release isolation.
+Their findings were remediated in the commits containing the hardenings
+below; only the committed hardenings and their regression tests are
+repository-verifiable evidence of that closure:
 
 - the corpus writer rejects non-regular `.ndjson` conflicts, validates output
   names, stages every new trace before replacement, and has a regression test
