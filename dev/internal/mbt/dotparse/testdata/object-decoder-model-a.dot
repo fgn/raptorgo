@@ -1,0 +1,140 @@
+strict digraph DiskGraph {
+node [shape=box,style=rounded]
+nodesep=0.35;
+subgraph cluster_graph {
+color="white";
+-7026174232243225298 [label="/\\ accepted0 = {}\n/\\ accepted1 = {}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0",style = filled]
+-7026174232243225298 -> 3238747558197599423 [label="AddWait(0,0)",color="black",fontcolor="black"];
+3238747558197599423 [label="/\\ accepted0 = {0}\n/\\ accepted1 = {}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0",tooltip="/\\ accepted0 = {0}\n/\\ accepted1 = {}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0"];
+-7026174232243225298 -> -6863540220333340008 [label="AddWait(1,0)",color="black",fontcolor="black"];
+-6863540220333340008 [label="/\\ accepted0 = {}\n/\\ accepted1 = {0}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0",tooltip="/\\ accepted0 = {}\n/\\ accepted1 = {0}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0"];
+-7026174232243225298 -> 8936137872678830122 [label="AddWait(0,1)",color="black",fontcolor="black"];
+8936137872678830122 [label="/\\ accepted0 = {1}\n/\\ accepted1 = {}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0",tooltip="/\\ accepted0 = {1}\n/\\ accepted1 = {}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0"];
+-7026174232243225298 -> 3157902540702713465 [label="AddWait(1,1)",color="black",fontcolor="black"];
+3157902540702713465 [label="/\\ accepted0 = {}\n/\\ accepted1 = {1}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0",tooltip="/\\ accepted0 = {}\n/\\ accepted1 = {1}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0"];
+-7026174232243225298 -> -7026174232243225298 [label="RejectInvalid",color="black",fontcolor="black"];
+-7026174232243225298 -> -7026174232243225298 [label="RejectLimit",color="black",fontcolor="black"];
+3238747558197599423 -> 3238747558197599423 [label="AddWait(0,0)",color="black",fontcolor="black"];
+3238747558197599423 -> 4963453690857399649 [label="AddWait(1,0)",color="black",fontcolor="black"];
+4963453690857399649 [label="/\\ accepted0 = {0}\n/\\ accepted1 = {0}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0",tooltip="/\\ accepted0 = {0}\n/\\ accepted1 = {0}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0"];
+3238747558197599423 -> -3491015404151150208 [label="AddWait(1,1)",color="black",fontcolor="black"];
+-3491015404151150208 [label="/\\ accepted0 = {0}\n/\\ accepted1 = {1}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0",tooltip="/\\ accepted0 = {0}\n/\\ accepted1 = {1}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0"];
+3238747558197599423 -> 488316854091873614 [label="BlockComplete(0,1)",color="black",fontcolor="black"];
+488316854091873614 [label="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {}\n/\\ state = \"receiving\"\n/\\ completed = 1\n/\\ verification = 0\n/\\ delivery = 0",tooltip="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {}\n/\\ state = \"receiving\"\n/\\ completed = 1\n/\\ verification = 0\n/\\ delivery = 0"];
+3238747558197599423 -> 3238747558197599423 [label="RejectInvalid",color="black",fontcolor="black"];
+3238747558197599423 -> 3238747558197599423 [label="RejectLimit",color="black",fontcolor="black"];
+3238747558197599423 -> 3238747558197599423 [label="RejectConflict(0,0)",color="black",fontcolor="black"];
+-6863540220333340008 -> 4963453690857399649 [label="AddWait(0,0)",color="black",fontcolor="black"];
+-6863540220333340008 -> -6863540220333340008 [label="AddWait(1,0)",color="black",fontcolor="black"];
+-6863540220333340008 -> -8570040619875411256 [label="AddWait(0,1)",color="black",fontcolor="black"];
+-8570040619875411256 [label="/\\ accepted0 = {1}\n/\\ accepted1 = {0}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0",tooltip="/\\ accepted0 = {1}\n/\\ accepted1 = {0}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0"];
+-6863540220333340008 -> -3721067792624173570 [label="BlockComplete(1,1)",color="black",fontcolor="black"];
+-3721067792624173570 [label="/\\ accepted0 = {}\n/\\ accepted1 = {0, 1}\n/\\ state = \"receiving\"\n/\\ completed = 1\n/\\ verification = 0\n/\\ delivery = 0",tooltip="/\\ accepted0 = {}\n/\\ accepted1 = {0, 1}\n/\\ state = \"receiving\"\n/\\ completed = 1\n/\\ verification = 0\n/\\ delivery = 0"];
+-6863540220333340008 -> -6863540220333340008 [label="RejectInvalid",color="black",fontcolor="black"];
+-6863540220333340008 -> -6863540220333340008 [label="RejectLimit",color="black",fontcolor="black"];
+-6863540220333340008 -> -6863540220333340008 [label="RejectConflict(1,0)",color="black",fontcolor="black"];
+8936137872678830122 -> -8570040619875411256 [label="AddWait(1,0)",color="black",fontcolor="black"];
+8936137872678830122 -> 8936137872678830122 [label="AddWait(0,1)",color="black",fontcolor="black"];
+8936137872678830122 -> 179519873484265001 [label="AddWait(1,1)",color="black",fontcolor="black"];
+179519873484265001 [label="/\\ accepted0 = {1}\n/\\ accepted1 = {1}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0",tooltip="/\\ accepted0 = {1}\n/\\ accepted1 = {1}\n/\\ state = \"receiving\"\n/\\ completed = 0\n/\\ verification = 0\n/\\ delivery = 0"];
+8936137872678830122 -> 488316854091873614 [label="BlockComplete(0,0)",color="black",fontcolor="black"];
+8936137872678830122 -> 8936137872678830122 [label="RejectInvalid",color="black",fontcolor="black"];
+8936137872678830122 -> 8936137872678830122 [label="RejectLimit",color="black",fontcolor="black"];
+8936137872678830122 -> 8936137872678830122 [label="RejectConflict(0,1)",color="black",fontcolor="black"];
+3157902540702713465 -> -3491015404151150208 [label="AddWait(0,0)",color="black",fontcolor="black"];
+3157902540702713465 -> 179519873484265001 [label="AddWait(0,1)",color="black",fontcolor="black"];
+3157902540702713465 -> 3157902540702713465 [label="AddWait(1,1)",color="black",fontcolor="black"];
+3157902540702713465 -> -3721067792624173570 [label="BlockComplete(1,0)",color="black",fontcolor="black"];
+3157902540702713465 -> 3157902540702713465 [label="RejectInvalid",color="black",fontcolor="black"];
+3157902540702713465 -> 3157902540702713465 [label="RejectLimit",color="black",fontcolor="black"];
+3157902540702713465 -> 3157902540702713465 [label="RejectConflict(1,1)",color="black",fontcolor="black"];
+4963453690857399649 -> 4963453690857399649 [label="AddWait(0,0)",color="black",fontcolor="black"];
+4963453690857399649 -> 4963453690857399649 [label="AddWait(1,0)",color="black",fontcolor="black"];
+4963453690857399649 -> -7631671612543649020 [label="BlockComplete(0,1)",color="black",fontcolor="black"];
+-7631671612543649020 [label="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {0}\n/\\ state = \"receiving\"\n/\\ completed = 1\n/\\ verification = 0\n/\\ delivery = 0",tooltip="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {0}\n/\\ state = \"receiving\"\n/\\ completed = 1\n/\\ verification = 0\n/\\ delivery = 0"];
+4963453690857399649 -> 7838689666419594492 [label="BlockComplete(1,1)",color="black",fontcolor="black"];
+7838689666419594492 [label="/\\ accepted0 = {0}\n/\\ accepted1 = {0, 1}\n/\\ state = \"receiving\"\n/\\ completed = 1\n/\\ verification = 0\n/\\ delivery = 0",tooltip="/\\ accepted0 = {0}\n/\\ accepted1 = {0, 1}\n/\\ state = \"receiving\"\n/\\ completed = 1\n/\\ verification = 0\n/\\ delivery = 0"];
+4963453690857399649 -> 4963453690857399649 [label="RejectInvalid",color="black",fontcolor="black"];
+4963453690857399649 -> 4963453690857399649 [label="RejectLimit",color="black",fontcolor="black"];
+4963453690857399649 -> 4963453690857399649 [label="RejectConflict(0,0)",color="black",fontcolor="black"];
+4963453690857399649 -> 4963453690857399649 [label="RejectConflict(1,0)",color="black",fontcolor="black"];
+-3491015404151150208 -> -3491015404151150208 [label="AddWait(0,0)",color="black",fontcolor="black"];
+-3491015404151150208 -> -3491015404151150208 [label="AddWait(1,1)",color="black",fontcolor="black"];
+-3491015404151150208 -> 7838689666419594492 [label="BlockComplete(1,0)",color="black",fontcolor="black"];
+-3491015404151150208 -> 2124021391361079269 [label="BlockComplete(0,1)",color="black",fontcolor="black"];
+2124021391361079269 [label="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {1}\n/\\ state = \"receiving\"\n/\\ completed = 1\n/\\ verification = 0\n/\\ delivery = 0",tooltip="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {1}\n/\\ state = \"receiving\"\n/\\ completed = 1\n/\\ verification = 0\n/\\ delivery = 0"];
+-3491015404151150208 -> -3491015404151150208 [label="RejectInvalid",color="black",fontcolor="black"];
+-3491015404151150208 -> -3491015404151150208 [label="RejectLimit",color="black",fontcolor="black"];
+-3491015404151150208 -> -3491015404151150208 [label="RejectConflict(0,0)",color="black",fontcolor="black"];
+-3491015404151150208 -> -3491015404151150208 [label="RejectConflict(1,1)",color="black",fontcolor="black"];
+488316854091873614 -> -7631671612543649020 [label="AddWait(1,0)",color="black",fontcolor="black"];
+488316854091873614 -> 2124021391361079269 [label="AddWait(1,1)",color="black",fontcolor="black"];
+488316854091873614 -> 488316854091873614 [label="RejectInvalid",color="black",fontcolor="black"];
+488316854091873614 -> 488316854091873614 [label="RejectLimit",color="black",fontcolor="black"];
+-8570040619875411256 -> -8570040619875411256 [label="AddWait(1,0)",color="black",fontcolor="black"];
+-8570040619875411256 -> -8570040619875411256 [label="AddWait(0,1)",color="black",fontcolor="black"];
+-8570040619875411256 -> -7631671612543649020 [label="BlockComplete(0,0)",color="black",fontcolor="black"];
+-8570040619875411256 -> -892206968264943776 [label="BlockComplete(1,1)",color="black",fontcolor="black"];
+-892206968264943776 [label="/\\ accepted0 = {1}\n/\\ accepted1 = {0, 1}\n/\\ state = \"receiving\"\n/\\ completed = 1\n/\\ verification = 0\n/\\ delivery = 0",tooltip="/\\ accepted0 = {1}\n/\\ accepted1 = {0, 1}\n/\\ state = \"receiving\"\n/\\ completed = 1\n/\\ verification = 0\n/\\ delivery = 0"];
+-8570040619875411256 -> -8570040619875411256 [label="RejectInvalid",color="black",fontcolor="black"];
+-8570040619875411256 -> -8570040619875411256 [label="RejectLimit",color="black",fontcolor="black"];
+-8570040619875411256 -> -8570040619875411256 [label="RejectConflict(1,0)",color="black",fontcolor="black"];
+-8570040619875411256 -> -8570040619875411256 [label="RejectConflict(0,1)",color="black",fontcolor="black"];
+-3721067792624173570 -> 7838689666419594492 [label="AddWait(0,0)",color="black",fontcolor="black"];
+-3721067792624173570 -> -892206968264943776 [label="AddWait(0,1)",color="black",fontcolor="black"];
+-3721067792624173570 -> -3721067792624173570 [label="RejectInvalid",color="black",fontcolor="black"];
+-3721067792624173570 -> -3721067792624173570 [label="RejectLimit",color="black",fontcolor="black"];
+179519873484265001 -> 179519873484265001 [label="AddWait(0,1)",color="black",fontcolor="black"];
+179519873484265001 -> 179519873484265001 [label="AddWait(1,1)",color="black",fontcolor="black"];
+179519873484265001 -> 2124021391361079269 [label="BlockComplete(0,0)",color="black",fontcolor="black"];
+179519873484265001 -> -892206968264943776 [label="BlockComplete(1,0)",color="black",fontcolor="black"];
+179519873484265001 -> 179519873484265001 [label="RejectInvalid",color="black",fontcolor="black"];
+179519873484265001 -> 179519873484265001 [label="RejectLimit",color="black",fontcolor="black"];
+179519873484265001 -> 179519873484265001 [label="RejectConflict(0,1)",color="black",fontcolor="black"];
+179519873484265001 -> 179519873484265001 [label="RejectConflict(1,1)",color="black",fontcolor="black"];
+-7631671612543649020 -> -7631671612543649020 [label="AddWait(1,0)",color="black",fontcolor="black"];
+-7631671612543649020 -> 6214496982951772985 [label="FinalizeVerifyEnter(1,1)",color="black",fontcolor="black"];
+6214496982951772985 [label="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {0, 1}\n/\\ state = \"decoded\"\n/\\ completed = 2\n/\\ verification = 1\n/\\ delivery = 0",tooltip="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {0, 1}\n/\\ state = \"decoded\"\n/\\ completed = 2\n/\\ verification = 1\n/\\ delivery = 0"];
+-7631671612543649020 -> -7631671612543649020 [label="RejectInvalid",color="black",fontcolor="black"];
+-7631671612543649020 -> -7631671612543649020 [label="RejectLimit",color="black",fontcolor="black"];
+-7631671612543649020 -> -7631671612543649020 [label="RejectConflict(1,0)",color="black",fontcolor="black"];
+7838689666419594492 -> 7838689666419594492 [label="AddWait(0,0)",color="black",fontcolor="black"];
+7838689666419594492 -> 6214496982951772985 [label="FinalizeVerifyEnter(0,1)",color="black",fontcolor="black"];
+7838689666419594492 -> 7838689666419594492 [label="RejectInvalid",color="black",fontcolor="black"];
+7838689666419594492 -> 7838689666419594492 [label="RejectLimit",color="black",fontcolor="black"];
+7838689666419594492 -> 7838689666419594492 [label="RejectConflict(0,0)",color="black",fontcolor="black"];
+2124021391361079269 -> 2124021391361079269 [label="AddWait(1,1)",color="black",fontcolor="black"];
+2124021391361079269 -> 6214496982951772985 [label="FinalizeVerifyEnter(1,0)",color="black",fontcolor="black"];
+2124021391361079269 -> 2124021391361079269 [label="RejectInvalid",color="black",fontcolor="black"];
+2124021391361079269 -> 2124021391361079269 [label="RejectLimit",color="black",fontcolor="black"];
+2124021391361079269 -> 2124021391361079269 [label="RejectConflict(1,1)",color="black",fontcolor="black"];
+-892206968264943776 -> -892206968264943776 [label="AddWait(0,1)",color="black",fontcolor="black"];
+-892206968264943776 -> 6214496982951772985 [label="FinalizeVerifyEnter(0,0)",color="black",fontcolor="black"];
+-892206968264943776 -> -892206968264943776 [label="RejectInvalid",color="black",fontcolor="black"];
+-892206968264943776 -> -892206968264943776 [label="RejectLimit",color="black",fontcolor="black"];
+-892206968264943776 -> -892206968264943776 [label="RejectConflict(0,1)",color="black",fontcolor="black"];
+6214496982951772985 -> -5209296289851285675 [label="Verified",color="black",fontcolor="black"];
+-5209296289851285675 [label="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {0, 1}\n/\\ state = \"verified\"\n/\\ completed = 2\n/\\ verification = 1\n/\\ delivery = 0",tooltip="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {0, 1}\n/\\ state = \"verified\"\n/\\ completed = 2\n/\\ verification = 1\n/\\ delivery = 0"];
+6214496982951772985 -> -5863782429942899373 [label="VerifyFailed",color="black",fontcolor="black"];
+-5863782429942899373 [label="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {0, 1}\n/\\ state = \"verification-failed\"\n/\\ completed = 2\n/\\ verification = 1\n/\\ delivery = 0",tooltip="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {0, 1}\n/\\ state = \"verification-failed\"\n/\\ completed = 2\n/\\ verification = 1\n/\\ delivery = 0"];
+6214496982951772985 -> 6214496982951772985 [label="TerminalAdd",color="black",fontcolor="black"];
+-5209296289851285675 -> -7965053716514586011 [label="DeliverEnter",color="black",fontcolor="black"];
+-7965053716514586011 [label="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {0, 1}\n/\\ state = \"verified\"\n/\\ completed = 2\n/\\ verification = 1\n/\\ delivery = 1",tooltip="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {0, 1}\n/\\ state = \"verified\"\n/\\ completed = 2\n/\\ verification = 1\n/\\ delivery = 1"];
+-5863782429942899373 -> -5863782429942899373 [label="TerminalAdd",color="black",fontcolor="black"];
+-7965053716514586011 -> 5934704981143394471 [label="Delivered",color="black",fontcolor="black"];
+5934704981143394471 [label="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {0, 1}\n/\\ state = \"delivered\"\n/\\ completed = 2\n/\\ verification = 1\n/\\ delivery = 1",tooltip="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {0, 1}\n/\\ state = \"delivered\"\n/\\ completed = 2\n/\\ verification = 1\n/\\ delivery = 1"];
+-7965053716514586011 -> -7053430923115441411 [label="DeliveryFailed",color="black",fontcolor="black"];
+-7053430923115441411 [label="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {0, 1}\n/\\ state = \"delivery-failed\"\n/\\ completed = 2\n/\\ verification = 1\n/\\ delivery = 1",tooltip="/\\ accepted0 = {0, 1}\n/\\ accepted1 = {0, 1}\n/\\ state = \"delivery-failed\"\n/\\ completed = 2\n/\\ verification = 1\n/\\ delivery = 1"];
+-7965053716514586011 -> -7965053716514586011 [label="TerminalAdd",color="black",fontcolor="black"];
+5934704981143394471 -> 5934704981143394471 [label="TerminalAdd",color="black",fontcolor="black"];
+-7053430923115441411 -> -7053430923115441411 [label="TerminalAdd",color="black",fontcolor="black"];
+{rank = same; -7026174232243225298;}
+{rank = same; -6863540220333340008;3157902540702713465;8936137872678830122;3238747558197599423;}
+{rank = same; -3721067792624173570;488316854091873614;-3491015404151150208;-8570040619875411256;179519873484265001;4963453690857399649;}
+{rank = same; -892206968264943776;2124021391361079269;7838689666419594492;-7631671612543649020;}
+{rank = same; 6214496982951772985;}
+{rank = same; -5209296289851285675;-5863782429942899373;}
+{rank = same; -7965053716514586011;}
+{rank = same; -7053430923115441411;5934704981143394471;}
+}
+}
