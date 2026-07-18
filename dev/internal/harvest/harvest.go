@@ -59,6 +59,7 @@ var semanticRequirements = []tracecorpus.Feature{
 	FeatureContiguousLayout,
 	FeatureSubBlockedLayout,
 	FeatureShortened,
+	FeatureInlineFuzzSeed,
 }
 
 type scenario struct {

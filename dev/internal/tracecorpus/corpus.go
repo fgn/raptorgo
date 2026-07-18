@@ -112,12 +112,29 @@ func curate(candidates []Candidate, options Options, fingerprint fingerprintFunc
 		})
 	}
 
+	featureDigests := make(map[Feature]map[[sha256.Size]byte]struct{}, len(required))
+	for _, candidate := range normalized {
+		for _, feature := range candidate.Features {
+			if !slices.Contains(required, feature) {
+				continue
+			}
+			if featureDigests[feature] == nil {
+				featureDigests[feature] = make(map[[sha256.Size]byte]struct{})
+			}
+			featureDigests[feature][candidate.Digest] = struct{}{}
+		}
+	}
 	sort.Slice(normalized, func(left, right int) bool {
 		if len(normalized[left].Events) != len(normalized[right].Events) {
 			return len(normalized[left].Events) < len(normalized[right].Events)
 		}
 		if comparison := bytes.Compare(normalized[left].Digest[:], normalized[right].Digest[:]); comparison != 0 {
 			return comparison < 0
+		}
+		leftExclusive := exclusiveFeatureCount(normalized[left].Features, featureDigests)
+		rightExclusive := exclusiveFeatureCount(normalized[right].Features, featureDigests)
+		if leftExclusive != rightExclusive {
+			return leftExclusive > rightExclusive
 		}
 		leftRequired := featureIntersectionCount(normalized[left].Features, required)
 		rightRequired := featureIntersectionCount(normalized[right].Features, required)
@@ -310,6 +327,16 @@ func featureIntersectionCount(features, required []Feature) int {
 	count := 0
 	for _, feature := range features {
 		if slices.Contains(required, feature) {
+			count++
+		}
+	}
+	return count
+}
+
+func exclusiveFeatureCount(features []Feature, featureDigests map[Feature]map[[sha256.Size]byte]struct{}) int {
+	count := 0
+	for _, feature := range features {
+		if len(featureDigests[feature]) == 1 {
 			count++
 		}
 	}

@@ -91,7 +91,7 @@ var scenarios = []scenario{
 		run:      func() ([]objtrace.Event, error) { return runConstruction(nil, errInjectedDelivery) },
 	},
 	{
-		name: "grouped_multi_block_delivery", required: true,
+		name:     "grouped_multi_block_delivery",
 		features: []tracecorpus.Feature{FeatureGrouped, FeatureMultiBlock},
 		run:      runGroupedMultiBlock,
 	},
@@ -132,7 +132,8 @@ var scenarios = []scenario{
 	},
 	{
 		name:     "inline_fuzz_raptorq",
-		features: []tracecorpus.Feature{FeatureInlineFuzzSeed, FeatureGrouped, FeatureTrailingEmpty},
+		required: true,
+		features: []tracecorpus.Feature{FeatureInlineFuzzSeed, FeatureGrouped, FeatureMultiBlock, FeatureTrailingEmpty},
 		run:      func() ([]objtrace.Event, error) { return runInlineFuzzSeed([]byte("raptorq"), 4, 2, 2) },
 	},
 	{
