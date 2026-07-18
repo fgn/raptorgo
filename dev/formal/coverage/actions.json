@@ -1,0 +1,21 @@
+{
+  "v": 1,
+  "actions": [
+    {"name": "AddWait", "op": "add_wait", "result": "ok", "completedDelta": 0},
+    {"name": "BlockComplete", "op": "block_complete", "result": "ok", "completedDelta": 1},
+    {"name": "VerifyEnter", "op": "verify_enter", "result": "ok", "completedDelta": 1},
+    {"name": "Verified", "op": "verified", "result": "ok", "completedDelta": 0},
+    {"name": "DeliverEnter", "op": "deliver_enter", "result": "ok", "completedDelta": 0},
+    {"name": "FinalizeDelivered", "op": "add_return", "result": "ok", "completedDelta": 0},
+    {"name": "FinalizeVerifyFailed", "op": "add_return", "result": "verification_error", "completedDelta": 0},
+    {"name": "FinalizeDeliveryFailed", "op": "add_return", "result": "delivery_error", "completedDelta": 0},
+    {"name": "DecodeFailure", "op": "decode_failure", "result": "decode_error", "completedDelta": 0},
+    {"name": "TerminalReject", "op": "terminal_add", "result": "terminal", "completedDelta": 0},
+    {"name": "RejectInvalid", "op": "add_reject_invalid", "result": "invalid", "completedDelta": 0},
+    {"name": "RejectLimit", "op": "add_reject_limit", "result": "limit", "completedDelta": 0},
+    {"name": "RejectConflict", "op": "add_reject_conflict", "result": "conflict", "completedDelta": 0},
+    {"name": "ConstructDelivered", "op": "construct_final", "result": "ok", "completedDelta": 0},
+    {"name": "ConstructVerifyFailed", "op": "construct_final", "result": "verification_error", "completedDelta": 0},
+    {"name": "ConstructDeliveryFailed", "op": "construct_final", "result": "delivery_error", "completedDelta": 0}
+  ]
+}
