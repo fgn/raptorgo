@@ -27,6 +27,13 @@ func run(arguments []string, stdout, stderr io.Writer) error {
 	flags.SetOutput(stderr)
 	output := flags.String("output", "", "directory for fingerprint-named NDJSON traces")
 	maximum := flags.Int("max", tracecorpus.DefaultMax, "maximum curated traces")
+	fuzzCorpus := flags.Bool("fuzz-corpus", false, "also replay the checked Go fuzz corpus")
+	fuzzDir := flags.String(
+		"fuzz-dir",
+		"testdata/fuzz/FuzzObjectCodecSourcePacketRoundTrip",
+		"checked fuzz target corpus directory",
+	)
+	cache := flags.String("cache", "", "optional matching Go fuzz-cache target directory")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
@@ -40,6 +47,16 @@ func run(arguments []string, stdout, stderr io.Writer) error {
 	candidates, err := harvest.Candidates()
 	if err != nil {
 		return err
+	}
+	if *cache != "" && !*fuzzCorpus {
+		return errors.New("traceharvest: -cache requires -fuzz-corpus")
+	}
+	if *fuzzCorpus {
+		fuzzCandidates, fuzzErr := harvest.FuzzCandidates(*fuzzDir, *cache)
+		if fuzzErr != nil {
+			return fuzzErr
+		}
+		candidates = append(candidates, fuzzCandidates...)
 	}
 	result, err := tracecorpus.Curate(candidates, tracecorpus.Options{
 		Max: *maximum, Required: harvest.RequiredFeatures(),

@@ -67,6 +67,30 @@ func TestRunRejectsMissingOutputAndTooSmallCap(t *testing.T) {
 		!strings.Contains(err.Error(), "feature obligations") {
 		t.Fatalf("small-cap error = %v", err)
 	}
+	if err := run(
+		[]string{"-output", t.TempDir(), "-cache", t.TempDir()},
+		&bytes.Buffer{}, &bytes.Buffer{},
+	); err == nil || !strings.Contains(err.Error(), "-cache requires -fuzz-corpus") {
+		t.Fatalf("cache-without-fuzz error = %v", err)
+	}
+}
+
+func TestRunIncludesCheckedFuzzCorpus(t *testing.T) {
+	output := t.TempDir()
+	fuzzDir := filepath.Join("..", "..", "..", "testdata", "fuzz", "FuzzObjectCodecSourcePacketRoundTrip")
+	var log bytes.Buffer
+	if err := run(
+		[]string{"-output", output, "-fuzz-corpus", "-fuzz-dir", fuzzDir},
+		&log, &log,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if len(corpusFiles(t, output)) < minimumCuratedTraces {
+		t.Fatal("fuzz-corpus harvest produced too few curated traces")
+	}
+	if !strings.Contains(log.String(), "summary candidates=30") {
+		t.Fatalf("fuzz candidates absent from log:\n%s", log.String())
+	}
 }
 
 func corpusFiles(t *testing.T, directory string) []string {
