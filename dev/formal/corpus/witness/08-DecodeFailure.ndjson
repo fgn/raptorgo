@@ -1,0 +1,13 @@
+{"v":1,"op":"init","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"blocks":1}
+{"v":1,"op":"add_wait","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"sbn":0,"esi":319,"symbols":1}
+{"v":1,"op":"add_wait","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"sbn":0,"esi":320,"symbols":1}
+{"v":1,"op":"add_wait","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"sbn":0,"esi":321,"symbols":1}
+{"v":1,"op":"add_wait","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"sbn":0,"esi":322,"symbols":1}
+{"v":1,"op":"add_wait","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"sbn":0,"esi":323,"symbols":1}
+{"v":1,"op":"add_wait","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"sbn":0,"esi":324,"symbols":1}
+{"v":1,"op":"add_wait","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"sbn":0,"esi":325,"symbols":1}
+{"v":1,"op":"add_wait","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"sbn":0,"esi":326,"symbols":1}
+{"v":1,"op":"add_wait","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"sbn":0,"esi":327,"symbols":1}
+{"v":1,"op":"add_wait","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"sbn":0,"esi":328,"symbols":1}
+{"v":1,"op":"decode_failure","result":"decode_error","state":"decode-failed","completed":0,"verification":0,"delivery":0,"bindingOK":true,"sbn":0,"esi":329,"symbols":1}
+{"v":1,"op":"terminal_add","result":"terminal","state":"decode-failed","completed":0,"verification":0,"delivery":0,"bindingOK":true,"sbn":0,"esi":319,"symbols":1}

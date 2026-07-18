@@ -1,0 +1,7 @@
+{"v":1,"op":"init","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"blocks":1}
+{"v":1,"op":"add_reject_limit","result":"limit","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"sbn":0,"esi":0,"symbols":2}
+{"v":1,"op":"add_wait","result":"ok","state":"receiving","completed":0,"verification":0,"delivery":0,"bindingOK":true,"sbn":0,"esi":0,"symbols":1}
+{"v":1,"op":"verify_enter","result":"ok","state":"decoded","completed":1,"verification":1,"delivery":0,"bindingOK":true}
+{"v":1,"op":"verified","result":"ok","state":"verified","completed":1,"verification":1,"delivery":0,"bindingOK":true}
+{"v":1,"op":"deliver_enter","result":"ok","state":"verified","completed":1,"verification":1,"delivery":1,"bindingOK":true}
+{"v":1,"op":"add_return","result":"ok","state":"delivered","completed":1,"verification":1,"delivery":1,"bindingOK":true,"sbn":0,"esi":1,"symbols":1}
