@@ -167,6 +167,58 @@ func TestHybridBinaryColumnIndexAndDenseIteration(t *testing.T) {
 	}
 }
 
+func TestHybridBinaryAppendDenseOnesMatchesForEachDenseOne(t *testing.T) {
+	t.Parallel()
+
+	matrix := newTestHybridBinary(
+		t, [][]uint16{{0, 2}, {1, 3}, {0, 1, 3}, {2, 3}}, 6, 2, 5,
+		[][2]uint32{{0, 4}, {1, 5}, {2, 4}, {3, 5}},
+	)
+	checkAllRows := func(stage string) {
+		t.Helper()
+		scratch := []uint32{99}
+		for row := uint32(0); row < matrix.Rows(); row++ {
+			var want []uint32
+			if err := matrix.ForEachDenseOne(row, func(column uint32) bool {
+				want = append(want, column)
+				return true
+			}); err != nil {
+				t.Fatal(err)
+			}
+			got, err := matrix.AppendDenseOnes(row, scratch[:1])
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got[0] != 99 {
+				t.Fatalf("%s row %d: append overwrote existing prefix: %v", stage, row, got)
+			}
+			if !slices.Equal(got[1:], want) {
+				t.Fatalf("%s row %d: append=%v foreach=%v", stage, row, got[1:], want)
+			}
+		}
+	}
+	checkAllRows("initial")
+	for freeze := 0; freeze < 3; freeze++ {
+		if _, err := matrix.FreezeNext(); err != nil {
+			t.Fatal(err)
+		}
+		if err := matrix.SwapRows(0, matrix.Rows()-1); err != nil {
+			t.Fatal(err)
+		}
+		if err := matrix.XORDenseRows(1, 2); err != nil {
+			t.Fatal(err)
+		}
+		checkAllRows("after freeze")
+	}
+	if _, err := matrix.AppendDenseOnes(matrix.Rows(), nil); !errors.Is(err, ErrInvalidSparseArgument) {
+		t.Fatalf("out-of-range append error=%v", err)
+	}
+	var nilMatrix *HybridBinary
+	if _, err := nilMatrix.AppendDenseOnes(0, nil); !errors.Is(err, ErrInvalidSparseArgument) {
+		t.Fatalf("nil append error=%v", err)
+	}
+}
+
 func TestHybridBinaryNilMutationReceiversRejectWithoutPanic(t *testing.T) {
 	t.Parallel()
 

@@ -35,7 +35,10 @@ func TestXORAndMulAddKnownVectors(t *testing.T) {
 func TestMulAddMatchesIndependentPolynomialArithmeticExhaustive(t *testing.T) {
 	t.Parallel()
 
-	source := make([]byte, 256)
+	// 295 = 4*64 + 32 + 7 drives every coefficient through the unrolled
+	// vector loop, the single-vector loop, and the scalar tail in one pass,
+	// while the first 256 positions cover every source value.
+	source := make([]byte, 295)
 	for index := range source {
 		source[index] = byte(index)
 	}

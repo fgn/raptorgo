@@ -16,8 +16,8 @@ var (
 
 // InactivationExecutionBackingBytes returns executor-owned logical backing for
 // a completed plan: packed binary U, dense HDPC, an owned D clone, materialized
-// residual system, dense solver workspace, and final result. The plan and
-// caller-owned D are excluded.
+// residual system, dense solver workspace, the bulk column-gather scratch, and
+// final result. The plan and caller-owned D are excluded.
 func InactivationExecutionBackingBytes(plan *InactivationPlan, symbolSize uint32) (uint64, error) {
 	if plan == nil || symbolSize == 0 {
 		return 0, fmt.Errorf("%w: nil/invalid plan or symbol size", ErrHybridExecutionWorkspace)
@@ -51,6 +51,12 @@ func InactivationExecutionBackingBytes(plan *InactivationPlan, symbolSize uint32
 	if err != nil {
 		return 0, fmt.Errorf("%w: dense completion: %w", ErrHybridDenseWorkspace, err)
 	}
+	// The executor gathers one row's nonzero columns at a time into a shared
+	// uint32 scratch. Every gather is bounded by L-finalI entries: replay
+	// gathers at most finalU dense columns, residual rows gather at most
+	// (L-finalI-denseColumns) sparse plus denseColumns dense columns, and the
+	// HDPC column map holds exactly L-finalI entries.
+	scratchBytes := uint64(residualColumns) * 4
 	resultBytes := uint64(plan.parameters.L()) * uint64(symbolSize)
 	return checkedBackingSum(
 		ErrHybridExecutionWorkspace,
@@ -60,6 +66,7 @@ func InactivationExecutionBackingBytes(plan *InactivationPlan, symbolSize uint32
 		coefficientBytes,
 		rightHandSideBytes,
 		solverBytes,
+		scratchBytes,
 		resultBytes,
 	)
 }
@@ -174,6 +181,12 @@ func executeInactivationPlanObserved(
 		}
 	}
 
+	// columnScratch is reused wherever a row's nonzero columns are gathered in
+	// bulk; every use re-slices it to length zero first. Its capacity is the
+	// bound accounted by InactivationExecutionBackingBytes, so gathers never
+	// reallocate.
+	columnScratch := make([]uint32, 0, plan.parameters.L()-plan.finalI)
+
 	for step := uint32(0); step < plan.steps; step++ {
 		pivotRow := plan.pivotRows[step]
 		pivotColumn := uint32(plan.pivotColumns[step])
@@ -235,40 +248,36 @@ func executeInactivationPlanObserved(
 			}
 		}
 
-		for hdpcRow := uint32(0); hdpcRow < plan.parameters.H; hdpcRow++ {
-			coefficient, atErr := hdpc.At(hdpcRow, pivotColumn)
-			if atErr != nil {
-				return nil, atErr
+		// The pivot row's dense one-columns are shared by every HDPC row
+		// this step touches, so they are gathered and mapped to physical
+		// columns once instead of once per HDPC row.
+		if plan.parameters.H > 0 {
+			gathered, gatherErr := binary.AppendDenseOnes(step, columnScratch[:0])
+			if gatherErr != nil {
+				return nil, gatherErr
 			}
+			columnScratch = gathered
+			for index, logical := range columnScratch {
+				physical, mappingErr := binary.PhysicalColumn(logical)
+				if mappingErr != nil {
+					return nil, mappingErr
+				}
+				columnScratch[index] = physical
+			}
+		}
+		for hdpcRow := uint32(0); hdpcRow < plan.parameters.H; hdpcRow++ {
+			hdpcValues, rowErr := hdpc.RowView(hdpcRow)
+			if rowErr != nil {
+				return nil, rowErr
+			}
+			coefficient := hdpcValues[pivotColumn]
 			if coefficient == 0 {
 				continue
 			}
-			var callbackErr error
-			if err := binary.ForEachDenseOne(step, func(logical uint32) bool {
-				physical, mappingErr := binary.PhysicalColumn(logical)
-				if mappingErr != nil {
-					callbackErr = mappingErr
-					return false
-				}
-				value, valueErr := hdpc.At(hdpcRow, physical)
-				if valueErr != nil {
-					callbackErr = valueErr
-					return false
-				}
-				if setErr := hdpc.Set(hdpcRow, physical, value^coefficient); setErr != nil {
-					callbackErr = setErr
-					return false
-				}
-				return true
-			}); err != nil {
-				return nil, err
+			for _, physical := range columnScratch {
+				hdpcValues[physical] ^= coefficient
 			}
-			if callbackErr != nil {
-				return nil, callbackErr
-			}
-			if err := hdpc.Set(hdpcRow, pivotColumn, 0); err != nil {
-				return nil, err
-			}
+			hdpcValues[pivotColumn] = 0
 			destination, destinationErr := workingD.Symbol(plan.rows + hdpcRow)
 			if destinationErr != nil {
 				return nil, destinationErr
@@ -298,17 +307,26 @@ func executeInactivationPlanObserved(
 		return nil, fmt.Errorf("%w: residual D: %w", ErrHybridDenseWorkspace, err)
 	}
 	residualRow := uint32(0)
+	activeEnd := plan.parameters.L() - binary.DenseColumns()
 	for logicalRow := plan.finalI; logicalRow < plan.rows; logicalRow++ {
-		for logicalColumn := plan.finalI; logicalColumn < plan.parameters.L(); logicalColumn++ {
-			value, hasErr := binary.Has(logicalRow, logicalColumn)
-			if hasErr != nil {
-				return nil, hasErr
-			}
-			if value {
-				if err := coefficients.Set(residualRow, logicalColumn-plan.finalI, 1); err != nil {
-					return nil, err
-				}
-			}
+		// A row's nonzero residual columns are its sparse ones in the
+		// still-active V range plus its dense-window ones; enumerating them
+		// replaces one Has probe per residual cell.
+		gathered, gatherErr := binary.VColumns(logicalRow, plan.finalI, activeEnd, columnScratch[:0])
+		if gatherErr != nil {
+			return nil, gatherErr
+		}
+		gathered, gatherErr = binary.AppendDenseOnes(logicalRow, gathered)
+		if gatherErr != nil {
+			return nil, gatherErr
+		}
+		columnScratch = gathered
+		coefficientValues, rowErr := coefficients.RowView(residualRow)
+		if rowErr != nil {
+			return nil, rowErr
+		}
+		for _, logicalColumn := range columnScratch {
+			coefficientValues[logicalColumn-plan.finalI] = 1
 		}
 		physicalRow, mappingErr := binary.PhysicalRow(logicalRow)
 		if mappingErr != nil {
@@ -323,19 +341,29 @@ func executeInactivationPlanObserved(
 		}
 		residualRow++
 	}
-	for hdpcRow := uint32(0); hdpcRow < plan.parameters.H; hdpcRow++ {
+	if plan.parameters.H > 0 {
+		// All HDPC residual rows read the same logical-to-physical column
+		// mapping, so it is materialized once.
+		columnScratch = columnScratch[:0]
 		for logicalColumn := plan.finalI; logicalColumn < plan.parameters.L(); logicalColumn++ {
 			physicalColumn, mappingErr := binary.PhysicalColumn(logicalColumn)
 			if mappingErr != nil {
 				return nil, mappingErr
 			}
-			value, atErr := hdpc.At(hdpcRow, physicalColumn)
-			if atErr != nil {
-				return nil, atErr
-			}
-			if err := coefficients.Set(residualRow, logicalColumn-plan.finalI, value); err != nil {
-				return nil, err
-			}
+			columnScratch = append(columnScratch, physicalColumn)
+		}
+	}
+	for hdpcRow := uint32(0); hdpcRow < plan.parameters.H; hdpcRow++ {
+		hdpcValues, rowErr := hdpc.RowView(hdpcRow)
+		if rowErr != nil {
+			return nil, rowErr
+		}
+		coefficientValues, rowErr := coefficients.RowView(residualRow)
+		if rowErr != nil {
+			return nil, rowErr
+		}
+		for index, physicalColumn := range columnScratch {
+			coefficientValues[index] = hdpcValues[physicalColumn]
 		}
 		values, symbolErr := workingD.Symbol(plan.rows + hdpcRow)
 		if symbolErr != nil {
@@ -405,30 +433,28 @@ func executeInactivationPlanObserved(
 			return nil, symbolErr
 		}
 		var before []byte
-		var dependencies []uint32
 		if observer != nil {
 			before = append([]byte(nil), destination...)
 		}
-		var callbackErr error
-		if err := binary.ForEachDenseOne(logicalRow, func(logicalColumn uint32) bool {
-			if observer != nil {
-				dependencies = append(dependencies, logicalColumn)
-			}
+		gathered, gatherErr := binary.AppendDenseOnes(logicalRow, columnScratch[:0])
+		if gatherErr != nil {
+			return nil, gatherErr
+		}
+		columnScratch = gathered
+		for _, logicalColumn := range columnScratch {
 			source, sourceErr := residualSolution.Symbol(logicalColumn - plan.finalI)
 			if sourceErr != nil {
-				callbackErr = sourceErr
-				return false
+				return nil, sourceErr
 			}
 			if xorErr := gf256.XOR(destination, source); xorErr != nil {
-				callbackErr = xorErr
-				return false
+				return nil, xorErr
 			}
-			return true
-		}); err != nil {
-			return nil, err
 		}
-		if callbackErr != nil {
-			return nil, callbackErr
+		var dependencies []uint32
+		if observer != nil {
+			// The observation record outlives this iteration, so it cannot
+			// alias the reused scratch slice.
+			dependencies = append(dependencies, columnScratch...)
 		}
 		if err := emitHybridSubstitutionObservation(
 			observer, plan.steps, logicalRow, dependencies, before, destination,

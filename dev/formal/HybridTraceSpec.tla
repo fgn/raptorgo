@@ -162,6 +162,7 @@ DenseSolverBacking ==
       ExpectedResidualRows * ExpectedResidualColumns
     + ExpectedResidualRows * SymbolSize
     + ExpectedResidualColumns * SymbolSize
+ColumnGatherScratch == ExpectedResidualColumns * 4
 ExpectedExecutionWorkspace ==
       HybridBacking
     + H * L
@@ -169,6 +170,7 @@ ExpectedExecutionWorkspace ==
     + ExpectedResidualRows * ExpectedResidualColumns
     + ExpectedResidualRows * SymbolSize
     + DenseSolverBacking
+    + ColumnGatherScratch
     + L * SymbolSize
 
 ObservationValid(record) ==

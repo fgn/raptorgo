@@ -69,6 +69,14 @@ func (matrix *Matrix) index(row, column uint32) (int, error) {
 	return int(uint64(row)*uint64(matrix.columns) + uint64(column)), nil
 }
 
+// RowView returns a mutable view of one complete row. The view aliases the
+// matrix storage: writes through it are writes to the matrix, and it is
+// invalidated when the matrix becomes unreachable. It exists so bulk row
+// updates on hot paths avoid one bounds-checked At/Set call per element.
+func (matrix *Matrix) RowView(row uint32) ([]byte, error) {
+	return matrix.row(row)
+}
+
 func (matrix *Matrix) row(row uint32) ([]byte, error) {
 	if row >= matrix.rows {
 		return nil, fmt.Errorf("%w: row %d in %dx%d", ErrMatrixIndex, row, matrix.rows, matrix.columns)

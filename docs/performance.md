@@ -40,23 +40,31 @@ GOEXPERIMENT=simd GOAMD64=v3 go test -run '^$' -bench '^BenchmarkObject' -benchm
 ```
 
 Paired results below were collected on an Intel Core i9-14900HX with Go
-1.26.5. Both binaries used `GOEXPERIMENT=simd`, `GOAMD64=v3`,
-`GOMAXPROCS=1`, and CPU 8. Ten one-iteration samples alternated the frozen
-pre-change scalar binary and the SIMD candidate so frequency and load drift
-were paired rather than compared across separate sessions.
+1.26.5. All binaries used `GOMAXPROCS=1` and CPU 8; SIMD binaries added
+`GOEXPERIMENT=simd` and `GOAMD64=v3`. Ten one-iteration samples alternated
+frozen binary pairs so frequency and load drift were paired rather than
+compared across separate sessions. Scalar and SIMD columns are the same
+commit, so the difference is execution width alone.
 
 | K=10,000, T=1280 workload | Scalar median (range) | SIMD median (range) | Paired speedup |
 |---|---:|---:|---:|
-| Construct + first repair | 644.8 ms (643.0–646.6) | 233.3 ms (232.4–234.1) | 2.77x |
-| Decode, 10% loss + 4 overhead | 669.7 ms (667.3–676.1) | 227.1 ms (225.3–234.0) | 2.95x |
+| Construct + first repair | 487.4 ms (486.0–488.7) | 117.5 ms (116.6–119.6) | 4.15x |
+| Decode, 10% loss + 4 overhead | 509.2 ms (504.1–513.1) | 112.2 ms (111.4–118.7) | 4.52x |
 
-The 1,280-byte kernel medians from ten alternating 500 ms samples were 361.0
-ns scalar versus 58.48 ns AVX2 for XOR (6.18x), and 1,002.5 ns scalar versus
-223.1 ns AVX2 for GF(256) `MulAdd` (4.49x). Both kernels remained zero
-allocation. End-to-end backing bytes and steady allocation counts were
-unchanged; the speedup comes from executing the same algebra on 32 bytes per
-vector. Full binary hashes, commands, profiles, rejected experiments, and gate
-results are in
+The 1,280-byte kernel medians from ten alternating 500 ms samples were 21.1
+ns for AVX2 XOR (61 GB/s through the destination) and 46.0 ns for AVX2
+GF(256) `MulAdd` via lane-duplicated nibble product tables, against 361.0 ns
+and 1,002.5 ns for the exhaustively checked scalar kernels. Both kernels
+remain zero allocation. Relative to the first SIMD round (233.3 ms construct
+plus repair, 227.1 ms decode, 58.5 ns XOR, 223.1 ns `MulAdd`), this round is
+another 1.93–1.96x end to end from replacing the polynomial-step multiply
+with VPSHUFB table lookups, removing a hidden AVX-to-SSE transition stall,
+and restructuring the HDPC, residual-materialization, and back-substitution
+loops around bulk row views; the loop restructuring also carries the default
+scalar build down from 549.4 ms and 570.2 ms (1.13x). Workspace accounting
+grew by exactly one shared column-gather scratch of `4*(L-finalI)` bytes and
+one steady allocation, mirrored in the formal workspace model. Full binary
+hashes, commands, profiles, rejected experiments, and gate results are in
 [`dev/perf/simd-optimization-log.md`](../dev/perf/simd-optimization-log.md).
 
 ## Encoding, T=1280

@@ -371,6 +371,38 @@ func (matrix *HybridBinary) XORDenseRows(destination, source uint32) error {
 	return nil
 }
 
+// AppendDenseOnes appends the row's current logical one-columns to output in
+// increasing order and returns the extended slice. It is the bulk form of
+// ForEachDenseOne for hot paths that reuse a scratch slice instead of paying
+// one callback invocation per set bit.
+func (matrix *HybridBinary) AppendDenseOnes(row uint32, output []uint32) ([]uint32, error) {
+	if !matrix.ready() || row >= matrix.rows {
+		return nil, fmt.Errorf("%w: dense row %d", ErrInvalidSparseArgument, row)
+	}
+	if matrix.denseColumns == 0 {
+		return output, nil
+	}
+	physical := matrix.logicalToPhysicalR[row]
+	rowStart := uint64(physical) * uint64(matrix.denseWords)
+	firstSlot := matrix.maxDense - matrix.denseColumns
+	lastSlot := matrix.maxDense
+	for wordIndex := firstSlot / 64; wordIndex <= (lastSlot-1)/64; wordIndex++ {
+		word := matrix.dense[rowStart+uint64(wordIndex)]
+		if wordIndex == firstSlot/64 {
+			word &= math.MaxUint64 << (firstSlot % 64)
+		}
+		if wordIndex == (lastSlot-1)/64 && lastSlot%64 != 0 {
+			word &= (uint64(1) << (lastSlot % 64)) - 1
+		}
+		for word != 0 {
+			slot := wordIndex*64 + uint32(bits.TrailingZeros64(word))
+			output = append(output, matrix.columns-(matrix.maxDense-slot))
+			word &= word - 1
+		}
+	}
+	return output, nil
+}
+
 // ForEachDenseOne visits current logical one-columns in increasing order.
 func (matrix *HybridBinary) ForEachDenseOne(row uint32, visit func(column uint32) bool) error {
 	if !matrix.ready() || row >= matrix.rows || visit == nil {

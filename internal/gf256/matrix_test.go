@@ -184,6 +184,36 @@ func TestMatrixRowViewCannotAppendIntoNextRow(t *testing.T) {
 	}
 }
 
+func TestMatrixRowViewAliasesStorageAndChecksBounds(t *testing.T) {
+	t.Parallel()
+
+	matrix := mustMatrix(t, 2, 3)
+	view, err := matrix.RowView(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(view) != 3 || cap(view) != 3 {
+		t.Fatalf("row view len=%d cap=%d, want 3/3", len(view), cap(view))
+	}
+	view[2] = 0x5a
+	got, err := matrix.At(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 0x5a {
+		t.Fatalf("write through view read back %#x, want 0x5a", got)
+	}
+	if err := matrix.Set(1, 0, 0xa5); err != nil {
+		t.Fatal(err)
+	}
+	if view[0] != 0xa5 {
+		t.Fatalf("view saw %#x after Set, want 0xa5", view[0])
+	}
+	if _, err := matrix.RowView(2); !errors.Is(err, ErrMatrixIndex) {
+		t.Fatalf("out-of-range row view error = %v, want ErrMatrixIndex", err)
+	}
+}
+
 func FuzzMatrixRowOperations(f *testing.F) {
 	f.Add(uint8(3), uint8(4), uint8(0), uint8(2), uint8(37))
 	f.Fuzz(func(t *testing.T, rowSeed, columnSeed, leftSeed, rightSeed, coefficient uint8) {
