@@ -8,6 +8,8 @@ vars:
   TLA2TOOLS_VERSION: v1.8.0
   TLA2TOOLS_SHA256: 58d44845a37a8d776deaf8cf3a623213b59d311bc0ec287bcdfbe148dd11bb3d
   TLA2TOOLS_JAR: '{{.ROOT_DIR}}/bin/tla2tools-v1.8.0.jar'
+  OBJECT_DECODER_MODEL_A_DOT_SHA256: d6c7ca7975b70bf43c614e2c1e772ecca56b1d10a4dde625c3fd8c4dd83e6df5
+  OBJECT_DECODER_MODEL_B_DOT_SHA256: f9c5231d636039a7a07f484a81840d3b799fe6abc456e5adee904e087ad8f739
   LIBRAPTORQ_COMMIT: a394b22af6e8fc742ce88eacf9af5343ecded9d7
   LIBRAPTORQ_ARCHIVE_SHA256: 2cc35b7b68fb3d7624d1be2660099be75373c018e6d3cb84203a231b37485892
 
@@ -136,6 +138,7 @@ tasks:
       GOARCH: "386"
     cmds:
       - go test -count=1 ./...
+      - go -C dev test -count=1 ./...
 
   test:checkptr:
     desc: run tests with strict unsafe-pointer instrumentation
@@ -215,7 +218,7 @@ tasks:
       - go -C dev run ./internal/tooling/checkmodule
 
   verify:generated:
-    desc: reject stale Go-generated TLA trace data and RFC tables
+    desc: reject stale generated traces, corpora, reports, and RFC tables
     cmds:
       - |-
         set -eu
@@ -267,6 +270,18 @@ tasks:
           -scenario delivery-fail -output "$temporary/object-decoder-delivery-failure-trace-data.tla"
         go -C dev run ./internal/cmd/genobjecttrace \
           -scenario decode-fail -output "$temporary/object-decoder-decode-failure-trace-data.tla"
+        go -C dev run ./internal/cmd/traceharvest \
+          -output "$temporary/objectdecoder" -max 64 >"$temporary/traceharvest.log"
+        go -C dev run ./internal/cmd/genwitness \
+          -corpus "$temporary/objectdecoder" \
+          -manifest formal/coverage/actions.json \
+          -output "$temporary/witness"
+        go -C dev run ./internal/cmd/tracecover \
+          -manifest formal/coverage/actions.json \
+          -corpus "$temporary/objectdecoder" \
+          -witness "$temporary/witness" \
+          -require-full -require-corpus-full -require-witness-full \
+          -format json >"$temporary/coverage-report.json"
         cmp "$temporary/deliver.tla" dev/formal/DecoderTraceData.tla
         cmp "$temporary/abort.tla" dev/formal/DecoderAbortTraceData.tla
         cmp "$temporary/verify-fail.tla" dev/formal/DecoderVerifyFailureTraceData.tla
@@ -292,6 +307,20 @@ tasks:
         cmp "$temporary/object-decoder-verify-failure-trace-data.tla" dev/formal/ObjectDecoderVerifyFailureTraceData.tla
         cmp "$temporary/object-decoder-delivery-failure-trace-data.tla" dev/formal/ObjectDecoderDeliveryFailureTraceData.tla
         cmp "$temporary/object-decoder-decode-failure-trace-data.tla" dev/formal/ObjectDecoderDecodeFailureTraceData.tla
+        diff -ru dev/formal/corpus/objectdecoder "$temporary/objectdecoder"
+        diff -ru dev/formal/corpus/witness "$temporary/witness"
+        cmp "$temporary/coverage-report.json" dev/formal/coverage/report.json
+
+  verify:trace:coverage:
+    desc: require complete corpus and legal-witness action coverage without Java
+    cmds:
+      - >-
+        go -C dev run ./internal/cmd/tracecover
+        -manifest formal/coverage/actions.json
+        -corpus formal/corpus/objectdecoder
+        -witness formal/corpus/witness
+        -require-full -require-corpus-full -require-witness-full
+        -format human
 
   verify:tla:
     desc: model-check static models and valid implementation traces
@@ -312,10 +341,8 @@ tasks:
       - ../scripts/tlc.sh -noGenerateSpecTE SparseScheduleTrace.tla -config SparseScheduleTrace.cfg
       - ../scripts/tlc.sh -noGenerateSpecTE InactivationTrace.tla -config InactivationTrace.cfg
       - ../scripts/tlc.sh -noGenerateSpecTE HybridTrace.tla -config HybridTrace.cfg
-      - ../scripts/tlc.sh -noGenerateSpecTE ObjectDecoderTrace.tla -config ObjectDecoderTrace.cfg
-      - ../scripts/tlc.sh -noGenerateSpecTE ObjectDecoderVerifyFailureTrace.tla -config ObjectDecoderTrace.cfg
-      - ../scripts/tlc.sh -noGenerateSpecTE ObjectDecoderDeliveryFailureTrace.tla -config ObjectDecoderTrace.cfg
-      - ../scripts/tlc.sh -noGenerateSpecTE ObjectDecoderDecodeFailureTrace.tla -config ObjectDecoderTrace.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE ObjectDecoderModel.tla -config ObjectDecoderModelA.cfg
+      - ../scripts/tlc.sh -noGenerateSpecTE ObjectDecoderModel.tla -config ObjectDecoderModelB.cfg
 
   verify:tla:negative:
     desc: prove invalid implementation traces fail the expected property
@@ -487,14 +514,128 @@ tasks:
           exit 1
         fi
 
-  verify:
-    desc: run RFC, generated-artifact, and formal verification gates
+        object_model_mutation_output="$temporary/ObjectDecoderModelMutation.out"
+        if ../scripts/tlc.sh -noGenerateSpecTE ObjectDecoderModel.tla \
+          -config ObjectDecoderModelMutation.cfg >"$object_model_mutation_output" 2>&1; then
+          echo 'object decoder model fault injection unexpectedly passed TLC' >&2
+          exit 1
+        fi
+        if ! grep -F 'Error: Action property EveryNextTransitionAllowed is violated.' \
+          "$object_model_mutation_output" >/dev/null; then
+          echo 'object decoder model fault injection failed for an unexpected reason' >&2
+          cat "$object_model_mutation_output" >&2
+          exit 1
+        fi
+
+  verify:trace:corpus:
+    desc: replay every harvested and legal-witness trace through TLC
+    deps: [install:tla2tools]
+    cmds:
+      - go -C dev run ./internal/cmd/tracereplay -corpus formal/corpus/objectdecoder -j 4
+      - go -C dev run ./internal/cmd/tracereplay -corpus formal/corpus/witness -j 4
+
+  verify:trace:negative:
+    desc: require every applicable machine-generated trace mutant to fail TraceComplete exactly
+    deps: [install:tla2tools]
+    cmds:
+      - go -C dev run ./internal/cmd/tracereplay -corpus formal/corpus/objectdecoder -negative -j 4
+
+  mbt:oracle1:
+    desc: execute every committed model schedule against the Java-free local oracle
+    cmds:
+      - go -C dev run ./internal/cmd/mbtrun -schedules formal/mbt/schedules
+
+  mbt:oracle1:386:
+    desc: execute every committed model schedule against Oracle 1 on 386
+    env:
+      GOARCH: "386"
+    cmds:
+      - go -C dev run ./internal/cmd/mbtrun -schedules formal/mbt/schedules
+
+  mbt:smoke:
+    desc: run all Java-free model schedule oracles on native and 386 architectures
+    cmds:
+      - task: mbt:oracle1
+      - task: mbt:oracle1:386
+
+  mbt:generate:
+    desc: prove deterministic model DOT output and reject generated schedule drift
+    deps: [install:tla2tools]
+    cmds:
+      - |-
+        set -eu
+        temporary=$(mktemp -d)
+        trap 'rm -rf "$temporary"' EXIT
+        dump_model() {
+          config=$1
+          output=$2
+          (
+            cd dev/formal
+            ../scripts/tlc.sh -workers 1 -fp 0 -seed 1 -noGenerateSpecTE \
+              -dump dot,actionlabels "$output" \
+              ObjectDecoderModel.tla -config "$config"
+          )
+        }
+        dump_model ObjectDecoderModelA.cfg "$temporary/A.first.dot"
+        dump_model ObjectDecoderModelA.cfg "$temporary/A.second.dot"
+        dump_model ObjectDecoderModelB.cfg "$temporary/B.first.dot"
+        dump_model ObjectDecoderModelB.cfg "$temporary/B.second.dot"
+        cmp "$temporary/A.first.dot" "$temporary/A.second.dot"
+        cmp "$temporary/B.first.dot" "$temporary/B.second.dot"
+        printf '%s  %s\n' '{{.OBJECT_DECODER_MODEL_A_DOT_SHA256}}' \
+          "$temporary/A.first.dot" | sha256sum -c -
+        printf '%s  %s\n' '{{.OBJECT_DECODER_MODEL_B_DOT_SHA256}}' \
+          "$temporary/B.first.dot" | sha256sum -c -
+        go -C dev run ./internal/cmd/genschedules \
+          -dot "$temporary/A.first.dot" -cfg A -fixture two-block \
+          -output "$temporary/schedules/A" >"$temporary/schedules-A.log"
+        go -C dev run ./internal/cmd/genschedules \
+          -dot "$temporary/B.first.dot" -cfg B -fixture one-block \
+          -output "$temporary/schedules/B" >"$temporary/schedules-B.log"
+        diff -ru dev/formal/mbt/schedules/A "$temporary/schedules/A"
+        diff -ru dev/formal/mbt/schedules/B "$temporary/schedules/B"
+
+  mbt:oracle2:
+    desc: replay every model-derived implementation trace through TLC and require full action coverage
+    deps: [install:tla2tools]
+    cmds:
+      - |-
+        set -eu
+        temporary=$(mktemp -d)
+        trap 'rm -rf "$temporary"' EXIT
+        for family in A B construct; do
+          go -C dev run ./internal/cmd/mbtrun \
+            -schedules "formal/mbt/schedules/$family" \
+            -traces "$temporary/$family"
+          go -C dev run ./internal/cmd/tracereplay \
+            -corpus "$temporary/$family" -j 4
+        done
+        go -C dev run ./internal/cmd/tracecover \
+          -manifest formal/coverage/actions.json \
+          -corpus "$temporary/A" \
+          -corpus "$temporary/B" \
+          -corpus "$temporary/construct" \
+          -require-corpus-full -format human
+
+  verify:static:
+    desc: run every Java-free specification, generated-artifact, coverage, and MBT gate
     cmds:
       - task: verify:rfc
       - task: verify:module
       - task: verify:generated
+      - task: verify:trace:coverage
+      - task: mbt:smoke
+
+  verify:
+    desc: run all static, TLA+, trace-replay, mutation, and model-derived gates
+    cmds:
+      - task: verify:static
       - task: verify:tla
       - task: verify:tla:negative
+      - task: verify:trace:corpus
+      - task: verify:trace:negative
+      - task: mbt:generate
+      - task: mbt:oracle2
 
   oracle:build:
     desc: format-check and build the pinned Rust parity oracle in release mode
@@ -839,5 +980,5 @@ tasks:
       - task: test:race
       - task: fuzz:smoke
       - task: bench:smoke
-      - task: verify
+      - task: verify:static
       - task: oracle:test

@@ -39,9 +39,8 @@ jobs:
       - run: task fuzz:smoke
       - run: task bench:smoke
       - run: task mutation:gate
-      - run: task verify:rfc
-      - run: task verify:module
-      - run: task verify:generated
+      - name: Verify static trace, coverage, generated-artifact, and MBT gates
+        run: task verify:static
 
   oracle:
     name: rust and c++ differential oracles

@@ -26,7 +26,20 @@ jobs:
         with:
           version: 3.x
           repo-token: ${{ github.token }}
-      - run: task verify
+      - name: Verify Java-free artifacts and local trace oracles
+        run: task verify:static
+      - name: Model-check static specifications and ObjectDecoder cfg A/B
+        run: task verify:tla
+      - name: Require exact rejection of hand-authored formal mutations
+        run: task verify:tla:negative
+      - name: Replay the harvested corpus and legal witnesses through TLC
+        run: task verify:trace:corpus
+      - name: Require exact rejection of every machine-generated trace mutant
+        run: task verify:trace:negative
+      - name: Verify deterministic model DOT and schedule regeneration
+        run: task mbt:generate
+      - name: Run Oracle 2 replay and model-trace coverage
+        run: task mbt:oracle2
 
   release-gates:
     name: RFC-maximum release gates
