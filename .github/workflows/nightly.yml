@@ -36,6 +36,8 @@ jobs:
         run: task verify:trace:corpus
       - name: Require exact rejection of every machine-generated trace mutant
         run: task verify:trace:negative
+      - name: Recheck the seeded production-fault trace
+        run: task verify:trace:redteam
       - name: Verify deterministic model DOT and schedule regeneration
         run: task mbt:generate
       - name: Run Oracle 2 replay and model-trace coverage
