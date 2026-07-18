@@ -10,6 +10,10 @@ vars:
   TLA2TOOLS_JAR: '{{.ROOT_DIR}}/bin/tla2tools-v1.8.0.jar'
   OBJECT_DECODER_MODEL_A_DOT_SHA256: d6c7ca7975b70bf43c614e2c1e772ecca56b1d10a4dde625c3fd8c4dd83e6df5
   OBJECT_DECODER_MODEL_B_DOT_SHA256: f9c5231d636039a7a07f484a81840d3b799fe6abc456e5adee904e087ad8f739
+  OBJECT_DECODER_REDTEAM_SEED_SHA256: a7262cefee03d0720627d164f765e42ee2d3fa1934680e90cf5df80d2803edf7
+  OBJECT_DECODER_REDTEAM_MINIMIZED_SHA256: 870ea532e0f3155bd3d72e40c7c31ba59905835ab220906b7641741ae06b1a34
+  OBJECT_DECODER_REDTEAM_FAILURE_SHA256: 44e1ba271ec2d9ec004783b5e31f5ed5d2e5d54dcf569bd0f5c1a32f89d9b064
+  OBJECT_DECODER_REDTEAM_TRACE_SHA256: cbba3fa181816f762de2b8e580b7372192aa647bcbc22fe7a7193d574948497f
   LIBRAPTORQ_COMMIT: a394b22af6e8fc742ce88eacf9af5343ecded9d7
   LIBRAPTORQ_ARCHIVE_SHA256: 2cc35b7b68fb3d7624d1be2660099be75373c018e6d3cb84203a231b37485892
 
@@ -541,6 +545,65 @@ tasks:
     cmds:
       - go -C dev run ./internal/cmd/tracereplay -corpus formal/corpus/objectdecoder -negative -j 4
 
+  redteam:object-verified:
+    desc: reproduce the seeded ObjectVerified fault in an isolated archive and compare its evidence
+    cmds:
+      - |-
+        set -eu
+        printf '%s  %s\n' '{{.OBJECT_DECODER_REDTEAM_SEED_SHA256}}' \
+          dev/formal/redteam/object-verified/seeded-seven-step.json | sha256sum -c -
+        printf '%s  %s\n' '{{.OBJECT_DECODER_REDTEAM_MINIMIZED_SHA256}}' \
+          dev/formal/redteam/object-verified/minimized.json | sha256sum -c -
+        printf '%s  %s\n' '{{.OBJECT_DECODER_REDTEAM_FAILURE_SHA256}}' \
+          dev/formal/redteam/object-verified/failure.json | sha256sum -c -
+        printf '%s  %s\n' '{{.OBJECT_DECODER_REDTEAM_TRACE_SHA256}}' \
+          dev/formal/redteam/object-verified/trace/bug.ndjson | sha256sum -c -
+        temporary=$(mktemp -d)
+        trap 'rm -rf "$temporary"' EXIT
+        mkdir "$temporary/repo"
+        git archive --format=tar HEAD | tar -xf - -C "$temporary/repo"
+        (
+          cd "$temporary/repo"
+          git apply dev/formal/redteam/object-verified/fault.patch
+        )
+        if go -C "$temporary/repo/dev" run ./internal/cmd/mbtrun \
+          -schedules formal/redteam/object-verified/seeded-seven-step.json \
+          -failures "$temporary/failures" \
+          >"$temporary/stdout" 2>"$temporary/stderr"; then
+          echo 'seeded ObjectVerified fault unexpectedly passed Oracle 1' >&2
+          exit 1
+        fi
+        generated="$temporary/failures/A-seeded-seven-step"
+        cmp dev/formal/redteam/object-verified/minimized.json "$generated/minimized.json"
+        cmp dev/formal/redteam/object-verified/failure.json "$generated/failure.json"
+        cmp dev/formal/redteam/object-verified/trace/bug.ndjson "$generated/trace.ndjson"
+        grep -F \
+          'delivery reentrant add state=decoded error=raptorgo: object decoder is terminal: decoded' \
+          "$temporary/stderr" >/dev/null
+        echo 'redteam: ObjectVerified fault reproduced; artifacts byte-identical'
+
+  verify:trace:redteam:
+    desc: require TLC to reject the committed seeded-fault partial trace exactly
+    deps: [install:tla2tools]
+    cmds:
+      - |-
+        set -eu
+        temporary=$(mktemp -d)
+        trap 'rm -rf "$temporary"' EXIT
+        output="$temporary/replay.out"
+        if go -C dev run ./internal/cmd/tracereplay \
+          -corpus formal/redteam/object-verified/trace -j 1 >"$output" 2>&1; then
+          echo 'seeded-fault partial trace unexpectedly passed TLC' >&2
+          exit 1
+        fi
+        marker='Error: Temporal property TraceComplete was violated.'
+        if [ "$(grep -Fc "$marker" "$output")" -ne 1 ]; then
+          echo 'seeded-fault partial trace failed for an unexpected reason' >&2
+          cat "$output" >&2
+          exit 1
+        fi
+        echo 'redteam: TLC rejected seeded-fault trace at TraceComplete'
+
   mbt:oracle1:
     desc: execute every committed model schedule against the Java-free local oracle
     cmds:
@@ -626,6 +689,7 @@ tasks:
       - task: verify:generated
       - task: verify:trace:coverage
       - task: mbt:smoke
+      - task: redteam:object-verified
 
   verify:
     desc: run all static, TLA+, trace-replay, mutation, and model-derived gates
@@ -635,6 +699,7 @@ tasks:
       - task: verify:tla:negative
       - task: verify:trace:corpus
       - task: verify:trace:negative
+      - task: verify:trace:redteam
       - task: mbt:generate
       - task: mbt:oracle2
 
