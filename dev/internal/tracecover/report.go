@@ -260,16 +260,22 @@ func (report Report) RenderHuman() []byte {
 		&output, "all: traces=%d events=%d covered=%d/%d uncovered=%s\n",
 		report.Traces, report.Events, report.Covered, report.Total, uncoveredText(report.Uncovered),
 	)
-	fmt.Fprintf(
-		&output, "corpus: traces=%d events=%d covered=%d/%d uncovered=%s\n",
-		report.Corpus.Traces, report.Corpus.Events, report.Corpus.Covered,
-		report.Corpus.Total, uncoveredText(report.Corpus.Uncovered),
-	)
-	fmt.Fprintf(
-		&output, "witness: traces=%d events=%d covered=%d/%d uncovered=%s\n",
-		report.Witness.Traces, report.Witness.Events, report.Witness.Covered,
-		report.Witness.Total, uncoveredText(report.Witness.Uncovered),
-	)
+	// A scope with zero traces had no inputs of that kind; listing every
+	// action as uncovered there would misread as a failing gate.
+	if report.Corpus.Traces > 0 {
+		fmt.Fprintf(
+			&output, "corpus: traces=%d events=%d covered=%d/%d uncovered=%s\n",
+			report.Corpus.Traces, report.Corpus.Events, report.Corpus.Covered,
+			report.Corpus.Total, uncoveredText(report.Corpus.Uncovered),
+		)
+	}
+	if report.Witness.Traces > 0 {
+		fmt.Fprintf(
+			&output, "witness: traces=%d events=%d covered=%d/%d uncovered=%s\n",
+			report.Witness.Traces, report.Witness.Events, report.Witness.Covered,
+			report.Witness.Total, uncoveredText(report.Witness.Uncovered),
+		)
+	}
 	return output.Bytes()
 }
 
